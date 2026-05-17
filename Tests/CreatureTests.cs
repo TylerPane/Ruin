@@ -34,24 +34,21 @@ public class CreatureTests
         int a = RandStat(), f = RandStat(), m = RandStat(), s = RandStat(), st = RandStat();
         var c = Make(a, f, m, s, st);
 
-        Assert.Equal(MathF.Round(a * 2.50f), MathF.Round(c.CombatStats.CritChance));
-        Assert.Equal(MathF.Round(a * 0.50f), MathF.Round(c.CombatStats.Evasion));
+        Assert.Equal((a * 5), c.CombatStats.AbilityCooldown);
         Assert.Equal(a / 2 + 1, c.CombatStats.ActionPoints);
-
-        Assert.Equal(MathF.Round(f * 1.00f), MathF.Round(c.CombatStats.Accuracy));
-        Assert.Equal(MathF.Round(f * 2.50f), MathF.Round(c.CombatStats.AbilityCooldown));
-        Assert.Equal(MathF.Round(f * 5.00f), MathF.Round(c.CombatStats.StaminaPool));
-
-        Assert.Equal(MathF.Round(m * 5.00f), MathF.Round(c.CombatStats.ManaPool));
-        Assert.Equal(MathF.Round(m * 2.50f), MathF.Round(c.CombatStats.MagicDamage));
-        Assert.Equal(MathF.Round(m * 1.00f), MathF.Round(c.CombatStats.MagicDefense));
-
-        Assert.Equal(MathF.Round(s * 2.50f), MathF.Round(c.CombatStats.AttackPower));
-        Assert.Equal(MathF.Round(s * 1.00f), MathF.Round(c.CombatStats.PhysicalDefense));
-        Assert.Equal(MathF.Round(s * 5.00f), MathF.Round(c.CombatStats.CritDamageBonus));
-
-        Assert.Equal(MathF.Round(st * 2.00f), MathF.Round(c.CombatStats.HitPoints));
-        Assert.Equal(MathF.Round(st * 0.50f + 3.00f), MathF.Round(c.CombatStats.MovementPoints));
+        Assert.Equal((a * 5), c.CombatStats.Evasion);
+        Assert.Equal((f * 5), c.CombatStats.Accuracy);
+        Assert.Equal((f * 5), c.CombatStats.CritChance);
+        Assert.Equal((f * 5), c.CombatStats.Perception);
+        Assert.Equal((m * 5), c.CombatStats.ManaPool);
+        Assert.Equal((m * 1), c.CombatStats.MagicDamage);
+        Assert.Equal((m * 1), c.CombatStats.MagicDefense);
+        Assert.Equal((s * 1), c.CombatStats.AttackPower);
+        Assert.Equal((s * 5), c.CombatStats.CritDamageBonus);
+        Assert.Equal((s * 1), c.CombatStats.Speed);
+        Assert.Equal((st * 2 + 5), c.CombatStats.HitPoints);
+        Assert.Equal((st + 3), c.CombatStats.MovementPoints);
+        Assert.Equal((st * 1), c.CombatStats.PhysicalDefense);
     }
 
     [Fact]
@@ -60,9 +57,8 @@ public class CreatureTests
         int f = RandStat(), m = RandStat(), st = RandStat();
         var c = Make(focus: f, mind: m, stamina: st);
 
-        Assert.Equal(MathF.Round(st * 2.00f), MathF.Round(c.CurrentHp));
-        Assert.Equal(MathF.Round(f * 5.00f), MathF.Round(c.CurrentStamina));
-        Assert.Equal(MathF.Round(m * 5.00f), MathF.Round(c.CurrentMana));
+        Assert.Equal((st * 2 + 5), c.CurrentHp);
+        Assert.Equal((m * 5), c.CurrentMana);
     }
 
 }

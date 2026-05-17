@@ -7,11 +7,11 @@ public enum BaseStat { Agility, Focus, Mind, Strength, Stamina }
 
 public enum CombatStat
 {
-    CritChance, Evasion, ActionPoints,
-    Accuracy, AbilityCooldown, StaminaPool,
+    AbilityCooldown, Evasion, ActionPoints,
+    Accuracy, CritChance, Perception,
     ManaPool, MagicDamage, MagicDefense,
-    AttackPower, PhysicalDefense, CritDamageBonus,
-    HitPoints, MovementPoints
+    AttackPower, CritDamageBonus, Speed,
+    HitPoints, MovementPoints, PhysicalDefense,
 }
 
 public class BaseStats(int agility, int focus, int mind, int strength, int stamina)
@@ -25,32 +25,30 @@ public class BaseStats(int agility, int focus, int mind, int strength, int stami
 
 public class CombatStats(BaseStats b)
 {
-    // 1 Agility = 2.5 CritChance, 0.5 Evasion; ActionPoints = Agility/2 + 1
-    public float CritChance { get; set; }     = b.Agility * 2.5f;
-    public float Evasion { get; set; }        = b.Agility * 0.5f;
-    public int ActionPoints { get; set; }     = b.Agility / 2 + 1;
+    // 1 Agility = 5 AbilityCooldown, 5 Evasion; ActionPoints = Agility/2 + 1
+    public int AbilityCooldown { get; set; } = b.Agility * 5;
+    public int ActionPoints { get; set; } = b.Agility / 2 + 1;
+    public int Evasion { get; set; } = b.Agility * 5;
 
-//TODO: Change evasion to int based off 100 and update accuracy as well. 
-//Needs to be added to weapon attacks.
+    // 1 Focus = 5 Accuracy, 5 CritChance, 5 Perception
+    public int Accuracy { get; set; } = b.Focus * 5;
+    public int CritChance { get; set; } = b.Focus * 5;
+    public int Perception { get; set; } = b.Focus * 5;
 
-    // 1 Focus = 1 Accuracy, 2.5 AbilityCooldown, 5 StaminaPool
-    public float Accuracy { get; set; }       = b.Focus * 1f;
-    public float AbilityCooldown { get; set; }= b.Focus * 2.5f;
-    public float StaminaPool { get; set; }    = b.Focus * 5f;
+    // 1 Mind = 5 ManaPool, 5 MagicDamage, 5 MagicDefense
+    public int ManaPool { get; set; } = b.Mind * 5;
+    public int MagicDamage { get; set; } = b.Mind * 1;
+    public int MagicDefense { get; set; } = b.Mind * 1;
 
-    // 1 Mind = 5 ManaPool, 2.5 MagicDamage, 1 MagicDefense
-    public float ManaPool { get; set; }       = MathF.Round(b.Mind * 5f);
-    public float MagicDamage { get; set; }    = b.Mind * 2.5f;
-    public float MagicDefense { get; set; }   = b.Mind * 1f;
+    // 1 Strength = 5 AttackPower, 5 CritDamageBonus, 1 Speed
+    public int AttackPower { get; set; } = b.Strength * 1;
+    public int CritDamageBonus { get; set; } = b.Strength * 5;
+    public int Speed { get; set; } = b.Strength * 1;
 
-    // 1 Strength = 2.5 AttackPower, 1 PhysicalDefense, 5 CritDamageBonus
-    public float AttackPower { get; set; }    = b.Strength * 2.5f;
-    public float PhysicalDefense { get; set; }= b.Strength * 1f;
-    public float CritDamageBonus { get; set; }= b.Strength * 5f;
-
-    // 1 Stamina = 2 HitPoints, .5 MovementPoints
-    public float HitPoints { get; set; }      = MathF.Round(b.Stamina * 2f);
-    public float MovementPoints { get; set; } = MathF.Round(b.Stamina * 0.5f + 3f);
+    // 1 Stamina = 2 HitPoints, 1 MovementPoints, 5 PhysicalDefense
+    public int HitPoints { get; set; } = (b.Stamina * 2) + 5;
+    public int MovementPoints { get; set; } = b.Stamina + 3;
+    public int PhysicalDefense { get; set; }= b.Stamina * 1;
 }
 
 public abstract class Creature
@@ -60,9 +58,8 @@ public abstract class Creature
     public BaseStats BaseStats { get; set; }
     public CombatStats CombatStats { get; set; }
 
-    public float CurrentHp { get; set; }
-    public float CurrentStamina { get; set; }
-    public float CurrentMana { get; set; }
+    public int CurrentHp { get; set; }
+    public int CurrentMana { get; set; }
 
     public List<Attack> Attacks { get; } = [];
     public List<StatusEffect> StatusEffects { get; } = [];
@@ -83,7 +80,6 @@ public abstract class Creature
         CombatStats = new CombatStats(BaseStats);
 
         CurrentHp = CombatStats.HitPoints;
-        CurrentStamina = CombatStats.StaminaPool;
         CurrentMana = CombatStats.ManaPool;
     }
 
@@ -159,46 +155,46 @@ public void RaiseCombatStat(CombatStat stat, float amount)
         switch (stat)
         {
             case CombatStat.CritChance:
-                CombatStats.CritChance = MathF.Max(0, CombatStats.CritChance + amount);
+                CombatStats.CritChance = Math.Max(0, CombatStats.CritChance + (int)MathF.Round(amount));
                 break;
             case CombatStat.Evasion:
-                CombatStats.Evasion = MathF.Max(0, CombatStats.Evasion + amount);
+                CombatStats.Evasion = Math.Max(0, CombatStats.Evasion + (int)MathF.Round(amount));
                 break;
             case CombatStat.ActionPoints:
                 CombatStats.ActionPoints = Math.Max(0, CombatStats.ActionPoints + (int)MathF.Round(amount));
                 break;
             case CombatStat.Accuracy:
-                CombatStats.Accuracy = MathF.Max(0, CombatStats.Accuracy + amount);
+                CombatStats.Accuracy = Math.Max(0, CombatStats.Accuracy + (int)MathF.Round(amount));
+                break;
+            case CombatStat.Perception:
+                CombatStats.Perception = Math.Max(0, CombatStats.Perception + (int)MathF.Round(amount));
                 break;
             case CombatStat.AbilityCooldown:
-                CombatStats.AbilityCooldown = MathF.Max(0, CombatStats.AbilityCooldown + amount);
-                break;
-            case CombatStat.StaminaPool:
-                CombatStats.StaminaPool = MathF.Max(0, CombatStats.StaminaPool + amount);
+                CombatStats.AbilityCooldown = Math.Max(0, CombatStats.AbilityCooldown + (int)MathF.Round(amount));
                 break;
             case CombatStat.ManaPool:
-                CombatStats.ManaPool = MathF.Max(0, CombatStats.ManaPool + amount);
+                CombatStats.ManaPool = Math.Max(0, CombatStats.ManaPool + (int)MathF.Round(amount));
                 break;
             case CombatStat.MagicDamage:
-                CombatStats.MagicDamage = MathF.Max(0, CombatStats.MagicDamage + amount);
+                CombatStats.MagicDamage = Math.Max(0, CombatStats.MagicDamage + (int)MathF.Round(amount));
                 break;
             case CombatStat.MagicDefense:
-                CombatStats.MagicDefense = MathF.Max(0, CombatStats.MagicDefense + amount);
+                CombatStats.MagicDefense = Math.Max(0, CombatStats.MagicDefense + (int)MathF.Round(amount));
                 break;
             case CombatStat.AttackPower:
-                CombatStats.AttackPower = MathF.Max(0, CombatStats.AttackPower + amount);
+                CombatStats.AttackPower = Math.Max(0, CombatStats.AttackPower + (int)MathF.Round(amount));
                 break;
             case CombatStat.PhysicalDefense:
-                CombatStats.PhysicalDefense = MathF.Max(0, CombatStats.PhysicalDefense + amount);
+                CombatStats.PhysicalDefense = Math.Max(0, CombatStats.PhysicalDefense + (int)MathF.Round(amount));
                 break;
             case CombatStat.CritDamageBonus:
-                CombatStats.CritDamageBonus = MathF.Max(0, CombatStats.CritDamageBonus + amount);
+                CombatStats.CritDamageBonus = Math.Max(0, CombatStats.CritDamageBonus + (int)MathF.Round(amount));
                 break;
             case CombatStat.HitPoints:
-                CombatStats.HitPoints = MathF.Max(0, CombatStats.HitPoints + amount);
+                CombatStats.HitPoints = Math.Max(0, CombatStats.HitPoints + (int)MathF.Round(amount));
                 break;
             case CombatStat.MovementPoints:
-                CombatStats.MovementPoints = MathF.Max(0, CombatStats.MovementPoints + amount);
+                CombatStats.MovementPoints = Math.Max(0, CombatStats.MovementPoints + (int)MathF.Round(amount));
                 break;
         }
     }
@@ -208,46 +204,46 @@ public void RaiseCombatStat(CombatStat stat, float amount)
         switch (stat)
         {
             case CombatStat.CritChance:
-                CombatStats.CritChance = MathF.Max(0, CombatStats.CritChance - amount);
+                CombatStats.CritChance = Math.Max(0, CombatStats.CritChance - (int)MathF.Round(amount));
                 break;
             case CombatStat.Evasion:
-                CombatStats.Evasion = MathF.Max(0, CombatStats.Evasion - amount);
+                CombatStats.Evasion = Math.Max(0, CombatStats.Evasion - (int)MathF.Round(amount));
                 break;
             case CombatStat.ActionPoints:
                 CombatStats.ActionPoints = Math.Max(0, CombatStats.ActionPoints - (int)MathF.Round(amount));
                 break;
             case CombatStat.Accuracy:
-                CombatStats.Accuracy = MathF.Max(0, CombatStats.Accuracy - amount);
+                CombatStats.Accuracy = Math.Max(0, CombatStats.Accuracy - (int)MathF.Round(amount));
+                break;
+            case CombatStat.Perception:
+                CombatStats.Perception = Math.Max(0, CombatStats.Perception - (int)MathF.Round(amount));
                 break;
             case CombatStat.AbilityCooldown:
-                CombatStats.AbilityCooldown = MathF.Max(0, CombatStats.AbilityCooldown - amount);
-                break;
-            case CombatStat.StaminaPool:
-                CombatStats.StaminaPool = MathF.Max(0, CombatStats.StaminaPool - amount);
+                CombatStats.AbilityCooldown = Math.Max(0, CombatStats.AbilityCooldown - (int)MathF.Round(amount));
                 break;
             case CombatStat.ManaPool:
-                CombatStats.ManaPool = MathF.Max(0, CombatStats.ManaPool - amount);
+                CombatStats.ManaPool = Math.Max(0, CombatStats.ManaPool - (int)MathF.Round(amount));
                 break;
             case CombatStat.MagicDamage:
-                CombatStats.MagicDamage = MathF.Max(0, CombatStats.MagicDamage - amount);
+                CombatStats.MagicDamage = Math.Max(0, CombatStats.MagicDamage - (int)MathF.Round(amount));
                 break;
             case CombatStat.MagicDefense:
-                CombatStats.MagicDefense = MathF.Max(0, CombatStats.MagicDefense - amount);
+                CombatStats.MagicDefense = Math.Max(0, CombatStats.MagicDefense - (int)MathF.Round(amount));
                 break;
             case CombatStat.AttackPower:
-                CombatStats.AttackPower = MathF.Max(0, CombatStats.AttackPower - amount);
+                CombatStats.AttackPower = Math.Max(0, CombatStats.AttackPower - (int)MathF.Round(amount));
                 break;
             case CombatStat.PhysicalDefense:
-                CombatStats.PhysicalDefense = MathF.Max(0, CombatStats.PhysicalDefense - amount);
+                CombatStats.PhysicalDefense = Math.Max(0, CombatStats.PhysicalDefense - (int)MathF.Round(amount));
                 break;
             case CombatStat.CritDamageBonus:
-                CombatStats.CritDamageBonus = MathF.Max(0, CombatStats.CritDamageBonus - amount);
+                CombatStats.CritDamageBonus = Math.Max(0, CombatStats.CritDamageBonus - (int)MathF.Round(amount));
                 break;
             case CombatStat.HitPoints:
-                CombatStats.HitPoints = MathF.Max(0, CombatStats.HitPoints - amount);
+                CombatStats.HitPoints = Math.Max(0, CombatStats.HitPoints - (int)MathF.Round(amount));
                 break;
             case CombatStat.MovementPoints:
-                CombatStats.MovementPoints = MathF.Max(0, CombatStats.MovementPoints - amount);
+                CombatStats.MovementPoints = Math.Max(0, CombatStats.MovementPoints - (int)MathF.Round(amount));
                 break;
         }
     }

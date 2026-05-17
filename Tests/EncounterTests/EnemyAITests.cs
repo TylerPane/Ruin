@@ -102,7 +102,7 @@ public class EnemyAITests
     {
         var state = MakeState();
         var g = PlaceGoblin(state, 5, 5);
-        var m = PlaceMerc(state, 6, 5); // adjacent — Scratch and Skewer both reach
+        var m = PlaceMerc(state, 6, 5, stamina: 1); // adjacent — Scratch and Skewer both reach
 
         float hpBefore = m.CurrentHp;
         Ai().TakeTurn(g, state);
@@ -122,7 +122,7 @@ public class EnemyAITests
         int apBefore = state.GetRemainingActionPoints(g);
         Ai().TakeTurn(g, state);
 
-        Assert.Equal(apBefore, 4);
+        Assert.Equal(4, apBefore);
         Assert.Equal(0, state.GetRemainingActionPoints(g));
     }
 
@@ -186,8 +186,8 @@ public class EnemyAITests
     {
         var state = MakeState();
         var g = PlaceGoblin(state, 5, 5);
-        var healthyMerc = PlaceMerc(state, 6, 5, stamina: 100); // 200 HP
-        var woundedMerc = PlaceMerc(state, 6, 6, stamina: 100);
+        var healthyMerc = PlaceMerc(state, 6, 5, stamina: 2); // lower HP but still higher than wounded
+        var woundedMerc = PlaceMerc(state, 6, 6, stamina: 1);
         woundedMerc.CurrentHp = 5;
 
         float healthyHpBefore = healthyMerc.CurrentHp;

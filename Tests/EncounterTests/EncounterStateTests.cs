@@ -78,9 +78,9 @@ public class EncounterStateTests
     public void GetRemainingMovement_EqualsMovementPoints_AfterPlacement()
     {
         var state = new EncounterState(new EncounterMap(10, 10));
-        var merc = new Mercenary(stamina: 4); // MovementPoints = MathF.Round(4*0.5+3) = 5
+        var merc = new Mercenary(stamina: 4); // MovementPoints = 4 + 3 = 7
         state.PlaceCreature(merc, 0, 0);
-        Assert.Equal(5f, state.GetRemainingMovement(merc));
+        Assert.Equal(7f, state.GetRemainingMovement(merc));
     }
 
     [Fact]
@@ -99,10 +99,10 @@ public class EncounterStateTests
     public void MoveCreature_DeductsCorrectMovementCost()
     {
         var state = new EncounterState(new EncounterMap(10, 10));
-        var merc = new Mercenary(stamina: 4); // MovementPoints = MathF.Round(2+3) = 5
+        var merc = new Mercenary(stamina: 4); // MovementPoints = 4 + 3 = 7
         state.PlaceCreature(merc, 0, 0);
         state.MoveCreature(merc, 2, 0); // 2 steps
-        Assert.Equal(3f, state.GetRemainingMovement(merc));
+        Assert.Equal(5f, state.GetRemainingMovement(merc));
     }
 
     [Fact]

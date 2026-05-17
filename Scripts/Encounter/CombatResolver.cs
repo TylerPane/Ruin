@@ -31,7 +31,7 @@ public class CombatResolver(Func<int, int, int> roll)
                 }
 
                 int baseDmg = roll(attack.MinDamage, attack.MaxDamage + 1);
-                int dmg = Math.Max(0, baseDmg + (int)attacker.CombatStats.AttackPower - (int)defender.CombatStats.PhysicalDefense);
+                int dmg = Math.Max(1, baseDmg + (int)attacker.CombatStats.AttackPower - (int)defender.CombatStats.PhysicalDefense);
                 if (isCrit) dmg *= 2;
 
                 defender.CurrentHp -= dmg;
@@ -49,7 +49,7 @@ public class CombatResolver(Func<int, int, int> roll)
     }
 
     // TODO(distance): switch to Euclidean (sqrt(dx² + dy²)) for circular range
-    // shape. Currently Chebyshev (square shape) — matches the v1 spec's
+    // shape. Currently square shape — matches the v1 spec's
     // explicit placeholder; replace alongside the EncounterScene targeting
     // overlay's distance calculation.
     public bool IsInRange(Creature attacker, Attack attack, (int X, int Y) targetTile, EncounterState state)
