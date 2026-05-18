@@ -20,8 +20,8 @@ public class PricklebackGoblinTests
         Assert.Equal(3, _f.BaseStats.Stamina);
     }
 
-    [Fact] public void PricklebackGoblin_HasBonusMovementPoints()  => Assert.Equal(15.00f, _f.CombatStats.MovementPoints);
-    [Fact] public void PricklebackGoblin_HasBonusCritChance() => Assert.Equal(25.00f, _f.CombatStats.CritChance);
+    [Fact] public void PricklebackGoblin_HasBonusMovementPoints()  => Assert.Equal(17.00f, _f.CombatStats.MovementPoints);
+    [Fact] public void PricklebackGoblin_HasBonusCritChance() => Assert.Equal(30.00f, _f.CombatStats.CritChance);
     [Fact] public void PricklebackGoblin_HasThreeAttacks()         => Assert.Equal(3, _f.Attacks.Count);
 
     [Fact]

@@ -14,6 +14,7 @@ public class TurnManager(EncounterState state)
     {
         CurrentPhase = 1;
         _movedThisTurn.Clear();
+        //TODO: replace the below with initiative tracker that goes off creature speed.
         SetPhaseQueue(BuildPhaseQueue(1));
         RefreshPhaseQueue();
     }
@@ -65,6 +66,7 @@ public class TurnManager(EncounterState state)
 
     private List<Creature> BuildPhaseQueue(int phase)
     {
+        //TODO: Replace all of this with initiaive tracker logic that sorts by creature speed.        
         int mercHalf = (int)Math.Ceiling(state.Mercenaries.Count / 2.0);
         int enemyHalf = (int)Math.Ceiling(state.Enemies.Count / 2.0);
         return phase switch
