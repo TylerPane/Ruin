@@ -26,80 +26,69 @@ public class TurnManagerTests
     }
 
     [Fact]
-    public void StartEncounter_Phase1_ContainsCeilHalfOfMercenaries()
-    {
-        var state = MakeState(mercCount: 3, enemyCount: 1);
-        var tm = new TurnManager(state);
-        tm.StartEncounter();
-        int canMove = state.Mercenaries.Count(m => tm.CanMove(m));
-        Assert.Equal(2, canMove); // ceil(3/2) = 2
-    }
-
-    [Fact]
-    public void StartEncounter_EvenSplit_Phase1ContainsHalfOfMercenaries()
-    {
-        var state = MakeState(mercCount: 4, enemyCount: 1);
-        var tm = new TurnManager(state);
-        tm.StartEncounter();
-        int canMove = state.Mercenaries.Count(m => tm.CanMove(m));
-        Assert.Equal(2, canMove); // 4/2 = 2
-    }
-
-    [Fact]
-    public void CanMove_ReturnsFalse_ForMercenaryInPhase3_WhenPhase1Active()
-    {
-        var state = MakeState(mercCount: 3, enemyCount: 1);
-        var tm = new TurnManager(state);
-        tm.StartEncounter();
-        // The 3rd mercenary is in phase 3, not phase 1
-        var phase3Merc = state.Mercenaries.Last();
-        Assert.False(tm.CanMove(phase3Merc));
-    }
-
-    [Fact]
-    public void CanMove_ReturnsFalse_ForMercenaryThatAlreadyMoved()
-    {
-        var state = MakeState(mercCount: 2, enemyCount: 1);
-        var tm = new TurnManager(state);
-        tm.StartEncounter();
-        var merc = state.Mercenaries.First();
-        tm.EndCreatureTurn(merc);
-        Assert.False(tm.CanMove(merc));
-    }
-
-    [Fact]
-    public void EndCreatureTurn_AdvancesPhase_WhenQueueExhausted()
+    public void StartEncounter_SetsCurrentCreature()
     {
         var state = MakeState(mercCount: 1, enemyCount: 1);
         var tm = new TurnManager(state);
         tm.StartEncounter();
-        Assert.Equal(1, tm.CurrentPhase);
-        tm.EndCreatureTurn(state.Mercenaries[0]); // phase 1 queue exhausted → advance
-        Assert.Equal(2, tm.CurrentPhase);
+        Assert.NotNull(tm.CurrentCreature);
     }
 
     [Fact]
-    public void EndCreatureTurn_DoesNotAdvancePhase_WhenOtherCreaturesRemain()
+    public void StartEncounter_OrdersBySpeed_HighestFirst()
     {
-        var state = MakeState(mercCount: 4, enemyCount: 1);
+        var state = new EncounterState(new EncounterMap(20, 20));
+        var fast = new Mercenary();
+        var slow = new PricklebackGoblin();
+
+        fast.RaiseStat(BaseStat.Strength, 10); // Raise speed significantly
+        state.Mercenaries.Add(fast);
+        state.Enemies.Add(slow);
+        state.PlaceCreature(fast, 0, 0);
+        state.PlaceCreature(slow, 1, 1);
+
         var tm = new TurnManager(state);
         tm.StartEncounter();
-        tm.EndCreatureTurn(state.Mercenaries[0]); // only 1 of 2 phase-1 mercs moved
-        Assert.Equal(1, tm.CurrentPhase);
+
+        Assert.Equal(fast, tm.CurrentCreature);
     }
 
     [Fact]
-    public void Phase3_ContainsRemainingMercenaries()
+    public void CanMove_ReturnsFalse_ForCreatureNotInTurn()
     {
-        var state = MakeState(mercCount: 3, enemyCount: 1);
+        var state = MakeState(mercCount: 2, enemyCount: 1);
         var tm = new TurnManager(state);
         tm.StartEncounter();
-        // Exhaust phase 1 (2 mercs) and phase 2 (1 enemy) to reach phase 3
-        foreach (var m in state.Mercenaries.Take(2)) tm.EndCreatureTurn(m);
-        foreach (var e in state.Enemies.Take(1)) tm.EndCreatureTurn(e);
-        Assert.Equal(3, tm.CurrentPhase);
-        int canMove = state.Mercenaries.Count(m => tm.CanMove(m));
-        Assert.Equal(1, canMove); // 1 remaining merc in phase 3
+
+        var otherMerc = state.Mercenaries.First(m => m != tm.CurrentCreature);
+        Assert.False(tm.CanMove(otherMerc));
+    }
+
+    [Fact]
+    public void CanMove_ReturnsFalse_ForCreatureThatAlreadyMoved()
+    {
+        var state = MakeState(mercCount: 1, enemyCount: 1);
+        var tm = new TurnManager(state);
+        tm.StartEncounter();
+        var current = tm.CurrentCreature!;
+
+        tm.EndCreatureTurn(current);
+
+        Assert.False(tm.CanMove(current));
+    }
+
+    [Fact]
+    public void EndCreatureTurn_AdvancesToNextCreature()
+    {
+        var state = MakeState(mercCount: 2, enemyCount: 1);
+        var tm = new TurnManager(state);
+        tm.StartEncounter();
+
+        var first = tm.CurrentCreature;
+        tm.EndCreatureTurn(first!);
+        var second = tm.CurrentCreature;
+
+        Assert.NotEqual(first, second);
     }
 
     [Fact]
@@ -130,58 +119,68 @@ public class TurnManagerTests
     }
 
     [Fact]
-    public void StartEncounter_ResetsActionPoints_ForPhase1Creatures()
+    public void StartEncounter_ResetsActionPoints_ForCurrentCreature()
     {
-        var state = MakeState(mercCount: 2, enemyCount: 1);
+        var state = MakeState(mercCount: 1, enemyCount: 1);
         var merc = state.Mercenaries.First();
         state.SpendActionPoints(merc, merc.CombatStats.ActionPoints);
         Assert.Equal(0, state.GetRemainingActionPoints(merc));
 
-        new TurnManager(state).StartEncounter();
-
-        Assert.Equal(merc.CombatStats.ActionPoints, state.GetRemainingActionPoints(merc));
-    }
-
-    [Fact]
-    public void AdvancePhase_ResetsActionPoints_ForNewPhaseCreatures()
-    {
-        var state = MakeState(mercCount: 1, enemyCount: 1);
-        var enemy = state.Enemies.First();
-        state.SpendActionPoints(enemy, enemy.CombatStats.ActionPoints);
         var tm = new TurnManager(state);
         tm.StartEncounter();
 
-        tm.EndCreatureTurn(state.Mercenaries.First()); // advance to phase 2
-
-        Assert.Equal(2, tm.CurrentPhase);
-        Assert.Equal(enemy.CombatStats.ActionPoints, state.GetRemainingActionPoints(enemy));
+        if (tm.CurrentCreature == merc)
+            Assert.Equal(merc.CombatStats.ActionPoints, state.GetRemainingActionPoints(merc));
     }
 
     [Fact]
-    public void StartEncounter_TicksStatusEffects_ForPhase1Creatures()
+    public void EndCreatureTurn_ResetsActionPoints_ForNextCreature()
+    {
+        var state = MakeState(mercCount: 2, enemyCount: 0);
+        var merc1 = state.Mercenaries[0];
+        var merc2 = state.Mercenaries[1];
+        state.SpendActionPoints(merc2, merc2.CombatStats.ActionPoints);
+
+        var tm = new TurnManager(state);
+        tm.StartEncounter();
+
+        if (tm.CurrentCreature == merc1)
+        {
+            tm.EndCreatureTurn(merc1);
+            if (tm.CurrentCreature == merc2)
+                Assert.Equal(merc2.CombatStats.ActionPoints, state.GetRemainingActionPoints(merc2));
+        }
+    }
+
+    [Fact]
+    public void StartEncounter_TicksStatusEffects_ForCurrentCreature()
     {
         var state = MakeState(mercCount: 1, enemyCount: 1);
         var merc = state.Mercenaries.First();
         merc.StatusEffects.Add(new StatusEffect(StatusEffectType.Bleed, CombatStat.HitPoints, amount: 3, duration: 2));
         float hpBefore = merc.CurrentHp;
 
-        new TurnManager(state).StartEncounter();
+        var tm = new TurnManager(state);
+        tm.StartEncounter();
 
-        Assert.Equal(hpBefore - 3, merc.CurrentHp);
-        Assert.Equal(1, merc.StatusEffects[0].Duration); // 2 → 1 after tick
+        if (tm.CurrentCreature == merc)
+        {
+            Assert.Equal(hpBefore - 3, merc.CurrentHp);
+            Assert.Equal(1, merc.StatusEffects[0].Duration);
+        }
     }
 
     [Fact]
     public void CanMove_ReturnsFalse_ForRemovedCreature()
     {
         var state = MakeState(mercCount: 2, enemyCount: 1);
-        var merc = state.Mercenaries.First();
         var tm = new TurnManager(state);
         tm.StartEncounter();
-        Assert.True(tm.CanMove(merc));
+        var current = tm.CurrentCreature!;
+        Assert.True(tm.CanMove(current));
 
-        state.RemoveCreature(merc);
+        state.RemoveCreature(current);
 
-        Assert.False(tm.CanMove(merc));
+        Assert.False(tm.CanMove(current));
     }
 }

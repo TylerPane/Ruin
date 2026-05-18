@@ -8,9 +8,9 @@ using RuinGamePDT.Resources;
 
 namespace RuinGamePDT.Rendering;
 
-public class EncounterScene(EncounterState state, TurnManager turns, Texture2D pixel, CombatResolver resolver)
+public class EncounterScene(EncounterState state, TurnManager turns, Texture2D pixel, CombatResolver resolver, Dictionary<string, Texture2D> skillIcons)
 {
-    private const int TileSize = 25;
+    private const int TileSize = 16;
 
     private enum Mode { Idle, Movement, Attack }
 
@@ -25,6 +25,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
     private KeyboardState _prevKeyboard;
 
     private readonly CombatResolver _resolver = resolver;
+    private readonly Dictionary<string, Texture2D> _skillIcons = skillIcons;
 
     public void Update(MouseState mouse)
     {
@@ -203,6 +204,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         DrawAoePreview(sb);
         DrawCreatures(sb);
         DrawHpBars(sb);
+        DrawActionBar(sb);
         DrawApPips(sb);
     }
 
@@ -281,6 +283,40 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         }
     }
 
+    private void DrawActionBar(SpriteBatch sb)
+    {
+        const int boxSize = 32;
+        const int boxGap = 2;
+        const int borderSize = 2;
+        const int boxCount = 10;
+        int barX = 8;
+        int barY = 830;
+
+        for (int i = 0; i < boxCount; i++)
+        {
+            int x = barX + i * (boxSize + boxGap);
+            var outerRect = new Rectangle(x, barY, boxSize, boxSize);
+            sb.Draw(pixel, outerRect, Color.White * 0.3f);
+
+            var innerRect = new Rectangle(x + borderSize, barY + borderSize, boxSize - borderSize * 2, boxSize - borderSize * 2);
+            sb.Draw(pixel, innerRect, Color.Black);
+        }
+
+        if (_selected is Mercenary merc)
+        {
+            for (int i = 0; i < Math.Min(3, merc.Attacks.Count); i++)
+            {
+                int x = barX + i * (boxSize + boxGap);
+                var rect = new Rectangle(x + borderSize, barY + borderSize, boxSize - borderSize * 2, boxSize - borderSize * 2);
+                var attack = merc.Attacks[i];
+                if (_skillIcons.TryGetValue(attack.Name, out var icon))
+                {
+                    sb.Draw(icon, rect, Color.White);
+                }
+            }
+        }
+    }
+
     private void DrawApPips(SpriteBatch sb)
     {
         if (_selected == null) return;
@@ -289,21 +325,15 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         const int pipSize = 8;
         const int pipGap = 4;
         int x0 = 8;
-        int y0 = 8;
+        int y0 = 810;
         for (int i = 0; i < max; i++)
         {
             int x = x0 + i * (pipSize + pipGap);
             var rect = new Rectangle(x, y0, pipSize, pipSize);
             if (i < remaining)
-                sb.Draw(pixel, rect, Color.Gold);
+                sb.Draw(pixel, rect, Color.Yellow);
             else
-            {
-                // Outline only — 4 thin rectangles
-                sb.Draw(pixel, new Rectangle(rect.X, rect.Y, rect.Width, 1), Color.Gold);
-                sb.Draw(pixel, new Rectangle(rect.X, rect.Bottom - 1, rect.Width, 1), Color.Gold);
-                sb.Draw(pixel, new Rectangle(rect.X, rect.Y, 1, rect.Height), Color.Gold);
-                sb.Draw(pixel, new Rectangle(rect.Right - 1, rect.Y, 1, rect.Height), Color.Gold);
-            }
+                sb.Draw(pixel, rect, Color.Black);
         }
     }
 }
