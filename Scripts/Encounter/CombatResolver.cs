@@ -31,7 +31,8 @@ public class CombatResolver(Func<int, int, int> roll)
                 }
 
                 int baseDmg = roll(attack.MinDamage, attack.MaxDamage + 1);
-                int dmg = Math.Max(1, baseDmg + (int)attacker.CombatStats.AttackPower - (int)defender.CombatStats.PhysicalDefense);
+                int dmg = baseDmg + (int)attacker.CombatStats.AttackPower - (int)defender.CombatStats.PhysicalDefense;
+                if (attack.MaxDamage > 0) dmg = Math.Max(1, dmg);
                 if (isCrit) dmg *= 2;
 
                 defender.CurrentHp -= dmg;

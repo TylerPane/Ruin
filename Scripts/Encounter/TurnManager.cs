@@ -4,49 +4,64 @@ namespace RuinGamePDT.Encounter;
 
 public class TurnManager(EncounterState state)
 {
-    public int CurrentPhase { get; private set; }
+    private readonly List<Creature> _turnOrder = [];
+    private readonly HashSet<Creature> _hasMoved = [];
+    private int _currentTurnIndex = -1;
 
-    private readonly HashSet<Creature> _movedThisTurn = [];
-    private List<Creature> _phaseQueue = [];
-    private readonly HashSet<Creature> _phaseSet = [];
+    public Creature? CurrentCreature => _currentTurnIndex >= 0 && _currentTurnIndex < _turnOrder.Count
+        ? _turnOrder[_currentTurnIndex]
+        : null;
 
     public void StartEncounter()
     {
-        CurrentPhase = 1;
-        _movedThisTurn.Clear();
-        //TODO: replace the below with initiative tracker that goes off creature speed.
-        SetPhaseQueue(BuildPhaseQueue(1));
-        RefreshPhaseQueue();
+        _hasMoved.Clear();
+        _turnOrder.Clear();
+        _currentTurnIndex = -1;
+
+        BuildInitiativeOrder();
+        AdvanceToNextTurn();
     }
 
     public bool CanMove(Creature creature) =>
-        _phaseSet.Contains(creature)
-        && !_movedThisTurn.Contains(creature)
+        creature == CurrentCreature
+        && !_hasMoved.Contains(creature)
         && state.IsPlaced(creature);
 
     public void EndCreatureTurn(Creature creature)
     {
-        _movedThisTurn.Add(creature);
-        if (_phaseQueue.All(_movedThisTurn.Contains))
-            AdvancePhase();
+        if (creature != CurrentCreature) return;
+
+        _hasMoved.Add(creature);
+        AdvanceToNextTurn();
     }
 
-    public void AdvancePhase()
+    private void AdvanceToNextTurn()
     {
-        if (CurrentPhase == 0) return;
-        CurrentPhase = CurrentPhase == 4 ? 1 : CurrentPhase + 1;
-        _movedThisTurn.Clear();
-        SetPhaseQueue(BuildPhaseQueue(CurrentPhase));
-        RefreshPhaseQueue();
-    }
-
-    private void RefreshPhaseQueue()
-    {
-        foreach (var c in _phaseQueue)
+        while (true)
         {
-            state.ResetMovement(c);
-            state.ResetActionPoints(c);
-            c.TickStatusEffects();
+            _currentTurnIndex++;
+
+            if (_currentTurnIndex >= _turnOrder.Count)
+            {
+                _turnOrder.Clear();
+                _hasMoved.Clear();
+                _currentTurnIndex = -1;
+                BuildInitiativeOrder();
+                _currentTurnIndex = 0;
+            }
+
+            if (_currentTurnIndex >= _turnOrder.Count) return;
+
+            var creature = _turnOrder[_currentTurnIndex];
+            if (!state.IsPlaced(creature))
+            {
+                continue;
+            }
+
+            state.ResetMovement(creature);
+            state.ResetActionPoints(creature);
+            creature.TickStatusEffects();
+            break;
         }
     }
 
@@ -57,25 +72,22 @@ public class TurnManager(EncounterState state)
         return EncounterResult.Ongoing;
     }
 
-    private void SetPhaseQueue(List<Creature> queue)
+    private void BuildInitiativeOrder()
     {
-        _phaseQueue = queue;
-        _phaseSet.Clear();
-        _phaseSet.UnionWith(queue);
-    }
+        var allCreatures = state.Mercenaries.Concat(state.Enemies).ToList();
 
-    private List<Creature> BuildPhaseQueue(int phase)
-    {
-        //TODO: Replace all of this with initiaive tracker logic that sorts by creature speed.        
-        int mercHalf = (int)Math.Ceiling(state.Mercenaries.Count / 2.0);
-        int enemyHalf = (int)Math.Ceiling(state.Enemies.Count / 2.0);
-        return phase switch
-        {
-            1 => state.Mercenaries.Take(mercHalf).ToList(),
-            2 => state.Enemies.Take(enemyHalf).ToList(),
-            3 => state.Mercenaries.Skip(mercHalf).ToList(),
-            4 => state.Enemies.Skip(enemyHalf).ToList(),
-            _ => []
-        };
+        var initiatives = allCreatures.Select(c => (
+            creature: c,
+            speed: c.CombatStats.Speed,
+            tiebreaker: Random.Shared.Next()
+        )).ToList();
+
+        _turnOrder.Clear();
+        _turnOrder.AddRange(
+            initiatives
+                .OrderByDescending(x => x.speed)
+                .ThenByDescending(x => x.tiebreaker)
+                .Select(x => x.creature)
+        );
     }
 }

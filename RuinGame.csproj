@@ -12,4 +12,7 @@
     <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.4.1" />
     <PackageReference Include="Udun.FastNoiseLite" Version="1.0.1" />
   </ItemGroup>
+  <ItemGroup>
+    <ContentCopy Include="Content/**/*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

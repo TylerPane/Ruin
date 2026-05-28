@@ -18,13 +18,14 @@ public class Game1 : Game
     private TurnManager _turnManager = null!;
     private EncounterScene _scene = null!;
     private EnemyAI _ai = null!;
+    private Dictionary<string, Texture2D> _skillIcons = null!;
 
     public Game1()
     {
         _graphics = new GraphicsDeviceManager(this)
         {
-            PreferredBackBufferWidth = 1250,
-            PreferredBackBufferHeight = 1250
+            PreferredBackBufferWidth = 1280,
+            PreferredBackBufferHeight = 900
         };
         Content.RootDirectory = "Content";
         IsMouseVisible = true;
@@ -36,6 +37,13 @@ public class Game1 : Game
 
         _pixel = new Texture2D(GraphicsDevice, 1, 1);
         _pixel.SetData(new[] { Color.White });
+
+        _skillIcons = new Dictionary<string, Texture2D>
+        {
+            { "Punch", LoadTexture("Content/Icons/Punch.png") },
+            { "Throw Stone", LoadTexture("Content/Icons/StoneThrow.png") },
+            { "Shout", LoadTexture("Content/Icons/Shout.png") }
+        };
 
         var map = new EncounterMapGenerator().Generate(BiomeType.Plains, seed: 42);
         _encounterState = new EncounterState(map);
@@ -64,7 +72,7 @@ public class Game1 : Game
         _turnManager.StartEncounter();
 
         var resolver = new CombatResolver(Random.Shared.Next);
-        _scene = new EncounterScene(_encounterState, _turnManager, _pixel, resolver);
+        _scene = new EncounterScene(_encounterState, _turnManager, _pixel, resolver, _skillIcons);
         _ai = new EnemyAI(resolver);
     }
 
@@ -72,13 +80,11 @@ public class Game1 : Game
     {
         _scene.Update(Mouse.GetState());
 
-        if (_turnManager.CurrentPhase == 2 || _turnManager.CurrentPhase == 4)
+        if (_turnManager.CurrentCreature is not Mercenary && _turnManager.CanMove(_turnManager.CurrentCreature!))
         {
-            foreach (var e in _encounterState.Enemies.Where(_turnManager.CanMove).ToList())
-            {
-                _ai.TakeTurn(e, _encounterState);
-                _turnManager.EndCreatureTurn(e);
-            }
+            var enemy = _turnManager.CurrentCreature!;
+            _ai.TakeTurn(enemy, _encounterState);
+            _turnManager.EndCreatureTurn(enemy);
         }
 
         base.Update(gameTime);
@@ -91,5 +97,13 @@ public class Game1 : Game
         _scene.Draw(_spriteBatch);
         _spriteBatch.End();
         base.Draw(gameTime);
+    }
+
+    private Texture2D LoadTexture(string path)
+    {
+        using (var stream = System.IO.File.OpenRead(path))
+        {
+            return Texture2D.FromStream(GraphicsDevice, stream);
+        }
     }
 }
