@@ -48,8 +48,8 @@ public class Game1 : Game
         var map = new EncounterMapGenerator().Generate(BiomeType.Plains, seed: 42);
         _encounterState = new EncounterState(map);
 
-        var merc1 = new Mercenary(stamina: 6);
-        var merc2 = new Mercenary(stamina: 6);
+        var merc1 = Mercenary.CreateRandom();
+        var merc2 = Mercenary.CreateRandom();
         var enemy = new PricklebackGoblin();
 
         _encounterState.Mercenaries.Add(merc1);

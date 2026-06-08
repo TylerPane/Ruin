@@ -17,7 +17,7 @@ public class UnarmedTests
     {
         var a = _u.Attacks.First(a => a.Name == "Punch");
         Assert.Equal(1, a.MinDamage);
-        Assert.Equal(1, a.MaxDamage);
+        Assert.Equal(2, a.MaxDamage);
         Assert.Equal(1, a.ActionPointCost);
         Assert.Equal(1, a.Range);
         Assert.Single(a.AttackShape.Offsets);
@@ -31,7 +31,7 @@ public class UnarmedTests
     {
         var a = _u.Attacks.First(a => a.Name == "Throw Stone");
         Assert.Equal(1, a.MinDamage);
-        Assert.Equal(1, a.MaxDamage);
+        Assert.Equal(2, a.MaxDamage);
         Assert.Equal(1, a.ActionPointCost);
         Assert.Equal(5, a.Range);
         Assert.Single(a.AttackShape.Offsets);

@@ -11,7 +11,7 @@ public class Unarmed : Weapon
         Attacks.Add(new Attack(
             name: "Punch",
             minDamage: 1,
-            maxDamage: 1,
+            maxDamage: 2,
             actionPointCost: 1,
             accuracy: 100,
             attackShape: new AttackShape(new[] { (0, 0) }),
@@ -21,7 +21,7 @@ public class Unarmed : Weapon
         Attacks.Add(new Attack(
             name: "Throw Stone",
             minDamage: 1,
-            maxDamage: 1,
+            maxDamage: 2,
             actionPointCost: 1,
             accuracy: 100,
             attackShape: new AttackShape(new[] { (0, 0) }),
