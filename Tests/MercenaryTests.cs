@@ -165,4 +165,31 @@ public class MercenaryTests
         Assert.Equal(1, block.OnHit.MinDuration);
         Assert.Equal(1, block.OnHit.MaxDuration);
     }
+
+    [Fact]
+    public void Mercenary_WithMindBelow3_DoesNotHaveFirstAid()
+    {
+        var m = new Mercenary(mind: 2);
+        Assert.DoesNotContain(m.Skills, s => s.Name == "First Aid");
+    }
+
+    [Fact]
+    public void Mercenary_WithMind3_HasFirstAid()
+    {
+        var m = new Mercenary(mind: 3);
+        Assert.Contains(m.Skills, s => s.Name == "First Aid");
+    }
+
+    [Fact]
+    public void FirstAid_HasCorrectProperties()
+    {
+        var m = new Mercenary(mind: 4);
+        var fa = m.Skills.First(s => s.Name == "First Aid");
+        Assert.Equal(-4, fa.MinDamage); // -Mind
+        Assert.Equal(-1, fa.MaxDamage);
+        Assert.Equal(2, fa.ActionPointCost);
+        Assert.Equal(1, fa.Range);
+        Assert.Null(fa.OnHit);
+        Assert.Null(fa.OnCrit);
+    }
 }
