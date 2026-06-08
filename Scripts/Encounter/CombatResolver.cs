@@ -32,7 +32,9 @@ public class CombatResolver(Func<int, int, int> roll)
 
                 int baseDmg = roll(attack.MinDamage, attack.MaxDamage + 1);
                 int dmg = baseDmg + (int)attacker.CombatStats.AttackPower - (int)defender.CombatStats.PhysicalDefense;
-                if (attack.MaxDamage > 0) dmg = Math.Max(1, dmg);
+                if (attack.MaxDamage > 0)       dmg = Math.Max(1, dmg);
+                else if (attack.MaxDamage == 0) dmg = 0;
+                // MaxDamage < 0: negative dmg is a heal — CurrentHp clamp handles the cap
                 if (isCrit) dmg *= 2;
 
                 defender.CurrentHp -= dmg;

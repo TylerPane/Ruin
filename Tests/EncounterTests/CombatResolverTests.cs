@@ -95,7 +95,7 @@ public class CombatResolverTests
         // rolls: hitCount=1, hit=100, dmg=5. No crit roll because AutoCrit.
         new CombatResolver(Rolls(1, 100, 5)).Resolve(attacker, attack, (1, 0), state);
 
-        Assert.Equal(hpBefore - 10, defender.CurrentHp); // 5 base * 2 crit
+        Assert.Equal(0, defender.CurrentHp); // 5 base * 2 crit = 10 > 5 max HP, clamped to 0
     }
 
     [Fact]
@@ -110,7 +110,7 @@ public class CombatResolverTests
         // rolls: hitCount=1, hit=100, crit=75, dmg=5
         new CombatResolver(Rolls(1, 100, 75, 5)).Resolve(attacker, attack, (1, 0), state);
 
-        Assert.Equal(hpBefore - 10, defender.CurrentHp);
+        Assert.Equal(0, defender.CurrentHp); // 5 base * 2 crit = 10 > 5 max HP, clamped to 0
     }
 
     [Fact]
@@ -207,7 +207,7 @@ public class CombatResolverTests
         // hitCount=3, then 3 iterations of (hit=100, crit=0, dmg=2) = 9 rolls + 1 hitCount = 10
         new CombatResolver(Rolls(3, 100, 0, 2, 100, 0, 2, 100, 0, 2)).Resolve(attacker, attack, (1, 0), state);
 
-        Assert.Equal(hpBefore - 6, defender.CurrentHp); // 3 hits * 2 dmg
+        Assert.Equal(0, defender.CurrentHp); // 3 hits * 2 dmg = 6 > 5 max HP, clamped to 0
     }
 
     [Fact]
@@ -302,5 +302,60 @@ public class CombatResolverTests
         Assert.True(resolver.IsInRange(attacker, attack, (3, 0), state));   // exactly min
         Assert.True(resolver.IsInRange(attacker, attack, (10, 0), state));  // exactly max
         Assert.False(resolver.IsInRange(attacker, attack, (11, 0), state)); // too far
+    }
+
+    [Fact]
+    public void ZeroDamageAttackShould_NotChangeHp()
+    {
+        // Shout scenario: 0/0 damage, high PhysicalDefense on defender — used to cause negative dmg (heal).
+        var (state, attacker, defender) = MakeFight(defenderStamina: 20);
+        var attack = BasicAttack(minDmg: 0, maxDmg: 0, accuracy: 100);
+        int hpBefore = defender.CurrentHp;
+
+        new CombatResolver(Rolls(1, 100, 0, 0)).Resolve(attacker, attack, (1, 0), state);
+
+        Assert.Equal(hpBefore, defender.CurrentHp);
+    }
+
+    [Fact]
+    public void CurrentHpShould_NotExceedMaxHp()
+    {
+        var creature = new TestCreature("T", 0, 1, 1, 0, 5); // HitPoints = 5*2+5 = 15
+        creature.CurrentHp = 10;
+
+        creature.CurrentHp += 999;
+
+        Assert.Equal(creature.CombatStats.HitPoints, creature.CurrentHp);
+    }
+
+    [Fact]
+    public void NegativeDamageAttackShould_HealTarget()
+    {
+        // Defender stamina 5 → HitPoints = 5*2+5 = 15, PhysicalDefense = 5. Start at 10 HP.
+        // baseDmg = -3, dmg = -3 + 0 - 5 = -8, so heals 8.
+        var (state, attacker, defender) = MakeFight(defenderStamina: 5);
+        defender.CurrentHp = 10;
+        var attack = BasicAttack(minDmg: -3, maxDmg: -3, accuracy: 100);
+
+        // rolls: hitCount=1, hit=100, crit=0, dmg=-3
+        new CombatResolver(Rolls(1, 100, 0, -3)).Resolve(attacker, attack, (1, 0), state);
+
+        // Defender heals: 10 + 8 = 18, clamped to 15
+        Assert.Equal(15, defender.CurrentHp);
+    }
+
+    [Fact]
+    public void NegativeDamageAttackShould_NotExceedMaxHp()
+    {
+        // Defender stamina 5 → HitPoints = 15, PhysicalDefense = 5. Already at 14 HP.
+        // baseDmg = -5, dmg = -5 + 0 - 5 = -10, so heals 10.
+        var (state, attacker, defender) = MakeFight(defenderStamina: 5);
+        defender.CurrentHp = 14;
+        var attack = BasicAttack(minDmg: -5, maxDmg: -5, accuracy: 100);
+
+        new CombatResolver(Rolls(1, 100, 0, -5)).Resolve(attacker, attack, (1, 0), state);
+
+        // Defender heals: 14 + 10 = 24, clamped to 15
+        Assert.Equal(15, defender.CurrentHp);
     }
 }
