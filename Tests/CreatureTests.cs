@@ -61,4 +61,11 @@ public class CreatureTests
         Assert.Equal((m * 5), c.CurrentMana);
     }
 
+    [Fact]
+    public void Creature_HasEmptySkillsListByDefault()
+    {
+        var c = Make();
+        Assert.Empty(c.Skills);
+    }
+
 }

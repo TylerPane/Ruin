@@ -58,10 +58,17 @@ public abstract class Creature
     public BaseStats BaseStats { get; set; }
     public CombatStats CombatStats { get; set; }
 
-    public int CurrentHp { get; set; }
+    private int _currentHp;
+    public int CurrentHp
+    {
+        get => _currentHp;
+        set => _currentHp = Math.Clamp(value, 0, CombatStats.HitPoints);
+    }
+
     public int CurrentMana { get; set; }
 
     public List<Attack> Attacks { get; } = [];
+    public List<Skill> Skills { get; } = [];
     public List<StatusEffect> StatusEffects { get; } = [];
     public Weapon? EquippedWeapon { get; set; }
 
