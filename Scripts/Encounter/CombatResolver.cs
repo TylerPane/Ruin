@@ -5,8 +5,9 @@ namespace RuinGamePDT.Encounter;
 
 public class CombatResolver(Func<int, int, int> roll)
 {
-    public void Resolve(Creature attacker, Attack attack, (int X, int Y) targetTile, EncounterState state)
+    public List<CombatLogEntry> Resolve(Creature attacker, Attack attack, (int X, int Y) targetTile, EncounterState state)
     {
+        var entries = new List<CombatLogEntry>();
         state.SpendActionPoints(attacker, attack.ActionPointCost);
         int hitCount = roll(attack.MinHits, attack.MaxHits + 1);
 
@@ -21,7 +22,11 @@ public class CombatResolver(Func<int, int, int> roll)
             {
                 int hitThreshold = 100 - attack.Accuracy + (int)defender.CombatStats.Evasion;
                 int hitRoll = roll(1, 101);
-                if (hitRoll < hitThreshold) continue;
+                if (hitRoll < hitThreshold)
+                {
+                    entries.Add(new CombatLogEntry(attacker.Name, attack.Name, defender.Name, WasHit: false, Damage: 0, EffectsApplied: Array.Empty<string>()));
+                    continue;
+                }
 
                 bool isCrit = attack.AutoCrit;
                 if (!isCrit)
@@ -39,8 +44,19 @@ public class CombatResolver(Func<int, int, int> roll)
 
                 defender.CurrentHp -= dmg;
 
-                if (attack.OnHit != null) defender.ApplyStatusEffect(attack.OnHit);
-                if (isCrit && attack.OnCrit != null) defender.ApplyStatusEffect(attack.OnCrit);
+                var effects = new List<string>();
+                if (attack.OnHit != null)
+                {
+                    defender.ApplyStatusEffect(attack.OnHit);
+                    effects.AddRange(DescribeEffect(attack.OnHit));
+                }
+                if (isCrit && attack.OnCrit != null)
+                {
+                    defender.ApplyStatusEffect(attack.OnCrit);
+                    effects.AddRange(DescribeEffect(attack.OnCrit));
+                }
+
+                entries.Add(new CombatLogEntry(attacker.Name, attack.Name, defender.Name, WasHit: true, Damage: dmg, EffectsApplied: effects));
 
                 if (defender.CurrentHp <= 0)
                 {
@@ -48,6 +64,21 @@ public class CombatResolver(Func<int, int, int> roll)
                     break;
                 }
             }
+        }
+
+        return entries;
+    }
+
+    private static IEnumerable<string> DescribeEffect(AttackEffect effect)
+    {
+        foreach (var statChange in effect.Stats)
+        {
+            yield return effect.Type switch
+            {
+                AttackEffectType.StatIncrease => $"{statChange.Stat} +",
+                AttackEffectType.StatReduction => $"{statChange.Stat} -",
+                _ => effect.Type.ToString()
+            };
         }
     }
 

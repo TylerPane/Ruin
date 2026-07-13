@@ -362,4 +362,86 @@ public class CombatResolverTests
         // Defender heals: 14 + 10 = 24, clamped to 15
         Assert.Equal(15, defender.CurrentHp);
     }
+
+    [Fact]
+    public void Resolve_OnHit_ReturnsEntryWithDamageAndHitFlag()
+    {
+        var (state, attacker, defender) = MakeFight(attackerStrength: 1, defenderStamina: 0);
+        var attack = BasicAttack(minDmg: 5, maxDmg: 5, accuracy: 80);
+
+        var entries = new CombatResolver(Rolls(1, 20, 0, 5)).Resolve(attacker, attack, (1, 0), state);
+
+        Assert.Single(entries);
+        Assert.Equal("A", entries[0].AttackerName);
+        Assert.Equal("Test", entries[0].AttackName);
+        Assert.Equal("D", entries[0].TargetName);
+        Assert.True(entries[0].WasHit);
+        Assert.True(entries[0].Damage > 0);
+        Assert.Empty(entries[0].EffectsApplied);
+    }
+
+    [Fact]
+    public void Resolve_Miss_ReturnsEntryWithWasHitFalse()
+    {
+        var (state, attacker, defender) = MakeFight();
+        var attack = BasicAttack(accuracy: 80);
+
+        var entries = new CombatResolver(Rolls(1, 19)).Resolve(attacker, attack, (1, 0), state);
+
+        Assert.Single(entries);
+        Assert.False(entries[0].WasHit);
+        Assert.Equal(0, entries[0].Damage);
+    }
+
+    [Fact]
+    public void Resolve_AoE_ReturnsOneEntryPerTargetHit()
+    {
+        var state = new EncounterState(new EncounterMap(20, 20));
+        var attacker = new TestCreature("A", 0, 1, 1, 1, 1);
+        var d1 = new TestCreature("D1", 0, 1, 1, 0, 0);
+        var d2 = new TestCreature("D2", 0, 1, 1, 0, 0);
+        state.Mercenaries.Add(attacker);
+        state.Enemies.Add(d1);
+        state.Enemies.Add(d2);
+        state.PlaceCreature(attacker, 0, 0);
+        state.PlaceCreature(d1, 5, 5);
+        state.PlaceCreature(d2, 6, 5);
+
+        var attack = BasicAttack(minDmg: 5, maxDmg: 5, accuracy: 100, shape: new[] { (0, 0), (1, 0) });
+
+        var entries = new CombatResolver(Rolls(1, 100, 0, 5, 100, 0, 5)).Resolve(attacker, attack, (5, 5), state);
+
+        Assert.Equal(2, entries.Count);
+        Assert.Contains(entries, e => e.TargetName == "D1");
+        Assert.Contains(entries, e => e.TargetName == "D2");
+    }
+
+    [Fact]
+    public void Resolve_OnHitEffect_IncludesEffectDescriptionInEntry()
+    {
+        var (state, attacker, defender) = MakeFight();
+        var onHit = new AttackEffect(AttackEffectType.Bleed,
+            new[] { new StatChange(CombatStat.HitPoints, 2, 2) },
+            MinDuration: 1, MaxDuration: 1);
+        var attack = BasicAttack(minDmg: 1, maxDmg: 1, accuracy: 100, onHit: onHit);
+
+        var entries = new CombatResolver(Rolls(1, 100, 0, 1)).Resolve(attacker, attack, (1, 0), state);
+
+        Assert.Single(entries);
+        Assert.Single(entries[0].EffectsApplied);
+        Assert.Equal("Bleed", entries[0].EffectsApplied[0]);
+    }
+
+    [Fact]
+    public void Resolve_NegativeDamage_EntryReportsNegativeDamageAsHeal()
+    {
+        var (state, attacker, defender) = MakeFight(defenderStamina: 5);
+        defender.CurrentHp = 10;
+        var attack = BasicAttack(minDmg: -3, maxDmg: -3, accuracy: 100);
+
+        var entries = new CombatResolver(Rolls(1, 100, 0, -3)).Resolve(attacker, attack, (1, 0), state);
+
+        Assert.Single(entries);
+        Assert.True(entries[0].Damage < 0);
+    }
 }
