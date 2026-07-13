@@ -5,25 +5,26 @@ namespace RuinGamePDT.Encounter;
 
 public class EnemyAI(CombatResolver resolver)
 {
-    public void TakeTurn(Creature enemy, EncounterState state)
+    public List<CombatLogEntry> TakeTurn(Creature enemy, EncounterState state)
     {
-        if (!state.IsPlaced(enemy)) return;
-        if (state.Mercenaries.Count == 0) return;
+        var entries = new List<CombatLogEntry>();
+        if (!state.IsPlaced(enemy)) return entries;
+        if (state.Mercenaries.Count == 0) return entries;
 
         var target = FindNearestMerc(enemy, state);
-        if (target == null) return;
+        if (target == null) return entries;
 
         MoveToward(enemy, target, state);
 
         while (true)
         {
-            if (!state.IsPlaced(enemy)) return;
-            if (state.Mercenaries.Count == 0) return;
+            if (!state.IsPlaced(enemy)) return entries;
+            if (state.Mercenaries.Count == 0) return entries;
 
             var pick = ChooseBestAttack(enemy, state);
-            if (pick == null) return;
+            if (pick == null) return entries;
 
-            resolver.Resolve(enemy, pick.Value.attack, pick.Value.targetTile, state);
+            entries.AddRange(resolver.Resolve(enemy, pick.Value.attack, pick.Value.targetTile, state));
         }
     }
 
