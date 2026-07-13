@@ -8,9 +8,10 @@ using RuinGamePDT.Resources;
 
 namespace RuinGamePDT.Rendering;
 
-public class EncounterScene(EncounterState state, TurnManager turns, Texture2D pixel, CombatResolver resolver, Dictionary<string, Texture2D> skillIcons)
+public class EncounterScene(EncounterState state, TurnManager turns, Texture2D pixel, CombatResolver resolver, Dictionary<string, Texture2D> skillIcons, SpriteFont logFont)
 {
     private const int TileSize = 16;
+    private const int LogPanelWidth = 260;
 
     private enum Mode { Idle, Movement, Attack }
 
@@ -26,15 +27,22 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
 
     private readonly CombatResolver _resolver = resolver;
     private readonly Dictionary<string, Texture2D> _skillIcons = skillIcons;
+    private readonly CombatLog _combatLog = new();
+
+    public void AddCombatLogEntries(IEnumerable<CombatLogEntry> entries) => _combatLog.AddEntries(entries);
 
     public void Update(MouseState mouse)
     {
         var kb = Keyboard.GetState();
 
-        // Hover tile (clamped to map)
-        int hx = Math.Clamp(mouse.X / TileSize, 0, state.Map.Width - 1);
+        // Hover tile (clamped to map, accounting for the left log panel offset)
+        int hx = Math.Clamp((mouse.X - LogPanelWidth) / TileSize, 0, state.Map.Width - 1);
         int hy = Math.Clamp(mouse.Y / TileSize, 0, state.Map.Height - 1);
         _hoverTile = (hx, hy);
+
+        int scrollDelta = (mouse.ScrollWheelValue - _prevMouse.ScrollWheelValue) / 40;
+        if (scrollDelta != 0)
+            _combatLog.HandleScroll(-scrollDelta);
 
         HandleKeyboard(kb);
         HandleMouseClick(mouse);
@@ -89,11 +97,14 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
                 if (state.GetRemainingActionPoints(skillUser) >= skill.ActionPointCost)
                 {
                     state.SpendActionPoints(skillUser, skill.ActionPointCost);
+                    var effectDescriptions = new List<string>();
                     if (skill.OnHit?.Stats is { Count: > 0 } stats)
                     {
                         var s = stats[0];
                         state.AddMovement(skillUser, Random.Shared.Next(s.MinAmount, s.MaxAmount + 1));
+                        effectDescriptions.Add($"{s.Stat} +");
                     }
+                    _combatLog.AddSelfCastEntry(skillUser.Name, skill.Name, effectDescriptions);
                     EnterMovementMode();
                 }
             }
@@ -104,7 +115,8 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
                 if (state.GetRemainingActionPoints(skillUser) >= skill.ActionPointCost)
                 {
                     var pos = state.GetPosition(skillUser);
-                    _resolver.Resolve(skillUser, skill, pos, state);
+                    var entries = _resolver.Resolve(skillUser, skill, pos, state);
+                    _combatLog.AddEntries(entries);
                     EnterMovementMode();
                 }
             }
@@ -125,10 +137,10 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         if (mouse.LeftButton != ButtonState.Pressed || _prevMouse.LeftButton != ButtonState.Released)
             return;
 
-        int gridX = mouse.X / TileSize;
+        int gridX = (mouse.X - LogPanelWidth) / TileSize;
         int gridY = mouse.Y / TileSize;
 
-        if (gridX < 0 || gridX >= state.Map.Width || gridY < 0 || gridY >= state.Map.Height)
+        if (mouse.X < LogPanelWidth || gridX >= state.Map.Width || gridY < 0 || gridY >= state.Map.Height)
         {
             ResetToIdle();
             return;
@@ -172,11 +184,13 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
                             state.SpendActionPoints(_selected!, _activeAttack.ActionPointCost);
                             int heal = Random.Shared.Next(-_activeAttack.MaxDamage, -_activeAttack.MinDamage + 1);
                             target.CurrentHp += heal;
+                            _combatLog.AddEntries(new[] { new CombatLogEntry(_selected!.Name, _activeAttack.Name, target.Name, WasHit: true, Damage: -heal, EffectsApplied: Array.Empty<string>()) });
                         }
                     }
                     else
                     {
-                        _resolver.Resolve(_selected!, _activeAttack!, (gridX, gridY), state);
+                        var entries = _resolver.Resolve(_selected!, _activeAttack!, (gridX, gridY), state);
+                        _combatLog.AddEntries(entries);
                     }
                     EnterMovementMode();
                 }
@@ -260,6 +274,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         DrawHpBars(sb);
         DrawActionBar(sb);
         DrawApPips(sb);
+        _combatLog.Draw(sb, pixel, logFont, new Rectangle(0, 0, LogPanelWidth, 900));
     }
 
     private void DrawTerrain(SpriteBatch sb)
@@ -273,7 +288,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
                 EncounterTileType.Hazard   => new Color(200, 100, 0),
                 _                          => new Color(90, 90, 90)
             };
-            sb.Draw(pixel, new Rectangle(x * TileSize, y * TileSize, TileSize, TileSize), color);
+            sb.Draw(pixel, new Rectangle(LogPanelWidth + x * TileSize, y * TileSize, TileSize, TileSize), color);
         }
     }
 
@@ -281,14 +296,14 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
     {
         if (_mode != Mode.Movement) return;
         foreach (var (pos, _) in _reachable)
-            sb.Draw(pixel, new Rectangle(pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), Color.Yellow * 0.35f);
+            sb.Draw(pixel, new Rectangle(LogPanelWidth + pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), Color.Yellow * 0.35f);
     }
 
     private void DrawAttackHighlights(SpriteBatch sb)
     {
         if (_mode != Mode.Attack) return;
         foreach (var pos in _validTargets)
-            sb.Draw(pixel, new Rectangle(pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), Color.Red * 0.35f);
+            sb.Draw(pixel, new Rectangle(LogPanelWidth + pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), Color.Red * 0.35f);
     }
 
     private void DrawAoePreview(SpriteBatch sb)
@@ -301,7 +316,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
             int x = _hoverTile.X + dx;
             int y = _hoverTile.Y + dy;
             if (x < 0 || x >= state.Map.Width || y < 0 || y >= state.Map.Height) continue;
-            sb.Draw(pixel, new Rectangle(x * TileSize, y * TileSize, TileSize, TileSize), Color.Cyan * 0.5f);
+            sb.Draw(pixel, new Rectangle(LogPanelWidth + x * TileSize, y * TileSize, TileSize, TileSize), Color.Cyan * 0.5f);
         }
     }
 
@@ -311,12 +326,12 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         {
             var pos = state.GetPosition(merc);
             var color = merc == _selected ? Color.Cyan : Color.DodgerBlue;
-            sb.Draw(pixel, new Rectangle(pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), color);
+            sb.Draw(pixel, new Rectangle(LogPanelWidth + pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), color);
         }
         foreach (var enemy in state.Enemies)
         {
             var pos = state.GetPosition(enemy);
-            sb.Draw(pixel, new Rectangle(pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), Color.Crimson);
+            sb.Draw(pixel, new Rectangle(LogPanelWidth + pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), Color.Crimson);
         }
     }
 
@@ -329,7 +344,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
             float cur = Math.Max(0, c.CurrentHp);
             int fillW = max <= 0 ? 0 : (int)Math.Round(TileSize * (cur / max));
 
-            int barX = pos.X * TileSize;
+            int barX = LogPanelWidth + pos.X * TileSize;
             int barY = pos.Y * TileSize - 5;
             sb.Draw(pixel, new Rectangle(barX, barY, TileSize, 3), new Color(60, 0, 0));
             if (fillW > 0)

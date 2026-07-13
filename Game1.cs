@@ -38,6 +38,8 @@ public class Game1 : Game
         _pixel = new Texture2D(GraphicsDevice, 1, 1);
         _pixel.SetData(new[] { Color.White });
 
+        var logFont = Content.Load<SpriteFont>("Fonts/CombatLogFont");
+
         _skillIcons = new Dictionary<string, Texture2D>
         {
             { "Punch", LoadTexture("Content/Icons/Punch.png") },
@@ -75,7 +77,7 @@ public class Game1 : Game
         _turnManager.StartEncounter();
 
         var resolver = new CombatResolver(Random.Shared.Next);
-        _scene = new EncounterScene(_encounterState, _turnManager, _pixel, resolver, _skillIcons);
+        _scene = new EncounterScene(_encounterState, _turnManager, _pixel, resolver, _skillIcons, logFont);
         _ai = new EnemyAI(resolver);
     }
 
@@ -86,7 +88,8 @@ public class Game1 : Game
         if (_turnManager.CurrentCreature is not Mercenary && _turnManager.CanMove(_turnManager.CurrentCreature!))
         {
             var enemy = _turnManager.CurrentCreature!;
-            _ai.TakeTurn(enemy, _encounterState);
+            var entries = _ai.TakeTurn(enemy, _encounterState);
+            _scene.AddCombatLogEntries(entries);
             _turnManager.EndCreatureTurn(enemy);
         }
 
