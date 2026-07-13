@@ -422,3 +422,4 @@ FodyWeavers.xsd
 
 # Markdown docs
 *.md
+!docs/superpowers/**/*.md
