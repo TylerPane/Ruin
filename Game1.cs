@@ -19,6 +19,8 @@ public class Game1 : Game
     private EncounterScene _scene = null!;
     private EnemyAI _ai = null!;
     private Dictionary<string, Texture2D> _skillIcons = null!;
+    private SpriteFont _logFont = null!;
+    private EncounterResult _encounterResult = EncounterResult.Ongoing;
 
     public Game1()
     {
@@ -38,7 +40,7 @@ public class Game1 : Game
         _pixel = new Texture2D(GraphicsDevice, 1, 1);
         _pixel.SetData(new[] { Color.White });
 
-        var logFont = Content.Load<SpriteFont>("Fonts/CombatLogFont");
+        _logFont = Content.Load<SpriteFont>("Fonts/CombatLogFont");
 
         _skillIcons = new Dictionary<string, Texture2D>
         {
@@ -77,12 +79,18 @@ public class Game1 : Game
         _turnManager.StartEncounter();
 
         var resolver = new CombatResolver(Random.Shared.Next);
-        _scene = new EncounterScene(_encounterState, _turnManager, _pixel, resolver, _skillIcons, logFont);
+        _scene = new EncounterScene(_encounterState, _turnManager, _pixel, resolver, _skillIcons, _logFont);
         _ai = new EnemyAI(resolver);
     }
 
     protected override void Update(GameTime gameTime)
     {
+        if (_encounterResult != EncounterResult.Ongoing)
+        {
+            base.Update(gameTime);
+            return;
+        }
+
         _scene.Update(Mouse.GetState());
 
         if (_turnManager.CurrentCreature is not Mercenary && _turnManager.CanMove(_turnManager.CurrentCreature!))
@@ -93,6 +101,8 @@ public class Game1 : Game
             _turnManager.EndCreatureTurn(enemy);
         }
 
+        _encounterResult = _turnManager.CheckEndCondition();
+
         base.Update(gameTime);
     }
 
@@ -101,8 +111,27 @@ public class Game1 : Game
         GraphicsDevice.Clear(Color.Black);
         _spriteBatch.Begin();
         _scene.Draw(_spriteBatch);
+        if (_encounterResult != EncounterResult.Ongoing)
+            DrawEndMessage(_spriteBatch);
         _spriteBatch.End();
         base.Draw(gameTime);
+    }
+
+    private void DrawEndMessage(SpriteBatch sb)
+    {
+        string message = _encounterResult switch
+        {
+            EncounterResult.Victory => "VICTORY",
+            EncounterResult.Defeat => "DEFEAT",
+            _ => _encounterResult.ToString().ToUpperInvariant()
+        };
+
+        var textSize = _logFont.MeasureString(message);
+        var viewport = GraphicsDevice.Viewport;
+        var pos = new Vector2((viewport.Width - textSize.X) / 2f, (viewport.Height - textSize.Y) / 2f);
+
+        sb.Draw(_pixel, new Rectangle(0, 0, viewport.Width, viewport.Height), Color.Black * 0.5f);
+        sb.DrawString(_logFont, message, pos, Color.White);
     }
 
     private Texture2D LoadTexture(string path)
