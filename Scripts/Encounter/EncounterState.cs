@@ -32,6 +32,10 @@ public class EncounterState(EncounterMap map)
 
     public bool IsOccupied(int x, int y) => _occupancy.ContainsKey((x, y));
 
+    public bool IsAlliedWith(Creature a, Creature b) =>
+        (Mercenaries.Contains(a) && Mercenaries.Contains(b)) ||
+        (Enemies.Contains(a) && Enemies.Contains(b));
+
     public bool IsPlaced(Creature creature) => _positions.ContainsKey(creature);
 
     // Precondition: creature must have been placed via PlaceCreature

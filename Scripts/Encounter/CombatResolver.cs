@@ -18,11 +18,14 @@ public class CombatResolver(Func<int, int, int> roll)
             var defender = state.GetCreatureAt(tx, ty);
             if (defender == null) continue;
 
+            bool isBuff = attack.MaxDamage == 0;
+            if (isBuff && !state.IsAlliedWith(attacker, defender)) continue;
+
             for (int i = 0; i < hitCount; i++)
             {
                 int hitThreshold = 100 - attack.Accuracy + (int)defender.CombatStats.Evasion;
                 int hitRoll = roll(1, 101);
-                if (hitRoll < hitThreshold)
+                if (!isBuff && hitRoll < hitThreshold)
                 {
                     entries.Add(new CombatLogEntry(attacker.Name, attack.Name, defender.Name, WasHit: false, Damage: 0, EffectsApplied: Array.Empty<string>()));
                     continue;

@@ -309,6 +309,54 @@ public class CombatResolverTests
     }
 
     [Fact]
+    public void BuffSkillShould_AlwaysHitAllyRegardlessOfEvasionRoll()
+    {
+        // Ally target with high evasion (agility 20 -> Evasion 100). A roll of 1
+        // would normally miss against threshold=100, but buff skills auto-hit allies.
+        var state = new EncounterState(new EncounterMap(20, 20));
+        var attacker = new TestCreature("A", 0, 1, 1, 0, 1);
+        var ally = new TestCreature("Ally", 20, 1, 1, 0, 0);
+        state.Mercenaries.Add(attacker);
+        state.Mercenaries.Add(ally);
+        state.PlaceCreature(attacker, 0, 0);
+        state.PlaceCreature(ally, 1, 0);
+
+        var onHit = new AttackEffect(AttackEffectType.StatIncrease,
+            new[] { new StatChange(CombatStat.PhysicalDefense, 2, 2) },
+            MinDuration: 3, MaxDuration: 3);
+        var attack = BasicAttack(minDmg: 0, maxDmg: 0, accuracy: 100, onHit: onHit);
+
+        // rolls: hitCount=1, hit=1 (would miss normally, but isBuff skips the check), crit=0, dmg=0
+        new CombatResolver(Rolls(1, 1, 0, 0)).Resolve(attacker, attack, (1, 0), state);
+
+        Assert.Single(ally.StatusEffects);
+        Assert.Equal(StatusEffectType.StatIncrease, ally.StatusEffects[0].Type);
+    }
+
+    [Fact]
+    public void BuffSkillShould_SkipEnemiesEntirely()
+    {
+        var state = new EncounterState(new EncounterMap(20, 20));
+        var attacker = new TestCreature("A", 0, 1, 1, 0, 1);
+        var enemy = new TestCreature("E", 0, 1, 1, 0, 5);
+        state.Mercenaries.Add(attacker);
+        state.Enemies.Add(enemy);
+        state.PlaceCreature(attacker, 0, 0);
+        state.PlaceCreature(enemy, 1, 0);
+
+        var onHit = new AttackEffect(AttackEffectType.StatIncrease,
+            new[] { new StatChange(CombatStat.PhysicalDefense, 2, 2) },
+            MinDuration: 3, MaxDuration: 3);
+        var attack = BasicAttack(minDmg: 0, maxDmg: 0, accuracy: 100, onHit: onHit);
+
+        // rolls: hitCount=1 only — enemy defender is skipped entirely, no hit/crit/dmg rolls consumed.
+        var entries = new CombatResolver(Rolls(1)).Resolve(attacker, attack, (1, 0), state);
+
+        Assert.Empty(entries);
+        Assert.Empty(enemy.StatusEffects);
+    }
+
+    [Fact]
     public void ZeroDamageAttackShould_NotChangeHp()
     {
         // Shout scenario: 0/0 damage, high PhysicalDefense on defender — used to cause negative dmg (heal).
