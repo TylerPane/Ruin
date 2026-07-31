@@ -87,7 +87,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
             }
         }
 
-        // Skill keys 8/9/0: activate skills while in Movement or Attack mode.
+        // Skill keys 8/9/0 (Rush/Defensive Stance/First Aid): activate skills while in Movement or Attack mode.
         if (_selected is Mercenary skillUser && (_mode == Mode.Movement || _mode == Mode.Attack))
         {
             // Key 8 → Rush (Skills[0]): spend AP, grant MP this turn only (no stat mutation)
@@ -108,8 +108,8 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
                     EnterMovementMode();
                 }
             }
-            // Key 0 → Defensive Stance (Skills[1]): self-cast
-            else if (JustPressed(kb, Keys.D0) && skillUser.Skills.Count > 1)
+            // Key 9 → Defensive Stance (Skills[1]): self-cast
+            else if (JustPressed(kb, Keys.D9) && skillUser.Skills.Count > 1)
             {
                 var skill = skillUser.Skills[1];
                 if (state.GetRemainingActionPoints(skillUser) >= skill.ActionPointCost)
@@ -120,8 +120,8 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
                     EnterMovementMode();
                 }
             }
-            // Key 9 → First Aid (Skills[2]): enter targeting mode
-            else if (JustPressed(kb, Keys.D9) && skillUser.Skills.Count > 2)
+            // Key 0 → First Aid (Skills[2]): enter targeting mode
+            else if (JustPressed(kb, Keys.D0) && skillUser.Skills.Count > 2)
             {
                 var skill = skillUser.Skills[2];
                 if (state.GetRemainingActionPoints(skillUser) >= skill.ActionPointCost)
@@ -361,6 +361,9 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         int barX = 8;
         int barY = 830;
 
+        // Slots 0-6 -> keys 1-7; slot 7 -> key 8; slot 8 -> key 9; slot 9 -> key 0.
+        int[] slotKeyLabels = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 0 };
+
         for (int i = 0; i < boxCount; i++)
         {
             int x = barX + i * (boxSize + boxGap);
@@ -369,6 +372,10 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
 
             var innerRect = new Rectangle(x + borderSize, barY + borderSize, boxSize - borderSize * 2, boxSize - borderSize * 2);
             sb.Draw(pixel, innerRect, Color.Black);
+
+            string label = slotKeyLabels[i].ToString();
+            var labelPos = new Vector2(x + boxSize - borderSize - 8, barY + boxSize - borderSize - 12);
+            sb.DrawString(logFont, label, labelPos, Color.White);
         }
 
         if (_selected is Mercenary merc)
@@ -382,7 +389,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
                     sb.Draw(icon, rect, Color.White);
             }
 
-            // Skills in fixed slots 7 (Rush/key 8), 8 (Defensive Stance/key 0), 9 (First Aid/key 9)
+            // Skills in fixed slots 7 (Rush/key 8), 8 (Defensive Stance/key 9), 9 (First Aid/key 0)
             int[] skillSlots = { 7, 8, 9 };
             for (int i = 0; i < Math.Min(skillSlots.Length, merc.Skills.Count); i++)
             {
