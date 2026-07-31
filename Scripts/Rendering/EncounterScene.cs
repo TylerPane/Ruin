@@ -13,6 +13,12 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
     private const int TileSize = 16;
     private const int LogPanelWidth = 260;
 
+    private const int HotbarBoxSize = 32;
+    private const int HotbarBoxGap = 2;
+    private const int HotbarBoxCount = 10;
+    private const int HotbarBarX = 8;
+    private const int HotbarBarY = 830;
+
     private enum Mode { Idle, Movement, Attack }
 
     private Mode _mode = Mode.Idle;
@@ -78,57 +84,71 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
             for (int k = 1; k <= 9; k++)
             {
                 if (!JustPressed(kb, Keys.D0 + k)) continue;
-                int idx = k - 1;
-                if (idx >= _selected.Attacks.Count) break;
-                var attack = _selected.Attacks[idx];
-                if (state.GetRemainingActionPoints(_selected) < attack.ActionPointCost) break;
-                EnterAttackMode(attack);
+                ActivateSlot(k - 1);
                 break;
             }
         }
 
         // Skill keys 8/9/0 (Rush/Defensive Stance/First Aid): activate skills while in Movement or Attack mode.
-        if (_selected is Mercenary skillUser && (_mode == Mode.Movement || _mode == Mode.Attack))
+        if (_selected is Mercenary && (_mode == Mode.Movement || _mode == Mode.Attack))
         {
-            // Key 8 → Rush (Skills[0]): spend AP, grant MP this turn only (no stat mutation)
-            if (JustPressed(kb, Keys.D8) && skillUser.Skills.Count > 0)
-            {
-                var skill = skillUser.Skills[0];
-                if (state.GetRemainingActionPoints(skillUser) >= skill.ActionPointCost)
+            if (JustPressed(kb, Keys.D8)) ActivateSlot(7);
+            else if (JustPressed(kb, Keys.D9)) ActivateSlot(8);
+            else if (JustPressed(kb, Keys.D0)) ActivateSlot(9);
+        }
+    }
+
+    // Slot 0-6: attacks. Slot 7: Rush (self-cast, bypasses resolver). Slot 8: Defensive Stance
+    // (self-cast via resolver). Slot 9: First Aid (targeted heal, enters Attack mode).
+    private void ActivateSlot(int slot)
+    {
+        if (_selected == null) return;
+
+        if (slot <= 6)
+        {
+            if (slot >= _selected.Attacks.Count) return;
+            var attack = _selected.Attacks[slot];
+            if (state.GetRemainingActionPoints(_selected) < attack.ActionPointCost) return;
+            EnterAttackMode(attack);
+            return;
+        }
+
+        if (_selected is not Mercenary skillUser) return;
+
+        switch (slot)
+        {
+            case 7: // Rush (Skills[0]): spend AP, grant MP this turn only (no stat mutation)
+                if (skillUser.Skills.Count <= 0) return;
+                var rush = skillUser.Skills[0];
+                if (state.GetRemainingActionPoints(skillUser) < rush.ActionPointCost) return;
+                state.SpendActionPoints(skillUser, rush.ActionPointCost);
+                var effectDescriptions = new List<string>();
+                if (rush.OnHit?.Stats is { Count: > 0 } stats)
                 {
-                    state.SpendActionPoints(skillUser, skill.ActionPointCost);
-                    var effectDescriptions = new List<string>();
-                    if (skill.OnHit?.Stats is { Count: > 0 } stats)
-                    {
-                        var s = stats[0];
-                        state.AddMovement(skillUser, Random.Shared.Next(s.MinAmount, s.MaxAmount + 1));
-                        effectDescriptions.Add($"{s.Stat} +");
-                    }
-                    _combatLog.AddSelfCastEntry(skillUser.Name, skill.Name, effectDescriptions);
-                    EnterMovementMode();
+                    var s = stats[0];
+                    state.AddMovement(skillUser, Random.Shared.Next(s.MinAmount, s.MaxAmount + 1));
+                    effectDescriptions.Add($"{s.Stat} +");
                 }
-            }
-            // Key 9 → Defensive Stance (Skills[1]): self-cast
-            else if (JustPressed(kb, Keys.D9) && skillUser.Skills.Count > 1)
-            {
-                var skill = skillUser.Skills[1];
-                if (state.GetRemainingActionPoints(skillUser) >= skill.ActionPointCost)
-                {
-                    var pos = state.GetPosition(skillUser);
-                    var entries = _resolver.Resolve(skillUser, skill, pos, state);
-                    _combatLog.AddEntries(entries);
-                    EnterMovementMode();
-                }
-            }
-            // Key 0 → First Aid (Skills[2]): enter targeting mode
-            else if (JustPressed(kb, Keys.D0) && skillUser.Skills.Count > 2)
-            {
-                var skill = skillUser.Skills[2];
-                if (state.GetRemainingActionPoints(skillUser) >= skill.ActionPointCost)
-                {
-                    EnterAttackMode(skill);
-                }
-            }
+                _combatLog.AddSelfCastEntry(skillUser.Name, rush.Name, effectDescriptions);
+                EnterMovementMode();
+                break;
+
+            case 8: // Defensive Stance (Skills[1]): self-cast
+                if (skillUser.Skills.Count <= 1) return;
+                var stance = skillUser.Skills[1];
+                if (state.GetRemainingActionPoints(skillUser) < stance.ActionPointCost) return;
+                var pos = state.GetPosition(skillUser);
+                var entries = _resolver.Resolve(skillUser, stance, pos, state);
+                _combatLog.AddEntries(entries);
+                EnterMovementMode();
+                break;
+
+            case 9: // First Aid (Skills[2]): enter targeting mode
+                if (skillUser.Skills.Count <= 2) return;
+                var firstAid = skillUser.Skills[2];
+                if (state.GetRemainingActionPoints(skillUser) < firstAid.ActionPointCost) return;
+                EnterAttackMode(firstAid);
+                break;
         }
     }
 
@@ -136,6 +156,13 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
     {
         if (mouse.LeftButton != ButtonState.Pressed || _prevMouse.LeftButton != ButtonState.Released)
             return;
+
+        int? clickedSlot = HotbarSlotAt(mouse.X, mouse.Y);
+        if (clickedSlot != null && _selected != null && (_mode == Mode.Movement || _mode == Mode.Attack))
+        {
+            ActivateSlot(clickedSlot.Value);
+            return;
+        }
 
         int gridX = (mouse.X - LogPanelWidth) / TileSize;
         int gridY = mouse.Y / TileSize;
@@ -257,6 +284,20 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         return offsets.Count == 1 && offsets[0] == (0, 0);
     }
 
+    private static int? HotbarSlotAt(int mouseX, int mouseY)
+    {
+        if (mouseY < HotbarBarY || mouseY >= HotbarBarY + HotbarBoxSize) return null;
+        if (mouseX < HotbarBarX) return null;
+
+        int offset = mouseX - HotbarBarX;
+        int stride = HotbarBoxSize + HotbarBoxGap;
+        int slot = offset / stride;
+        if (slot >= HotbarBoxCount) return null;
+        if (offset % stride >= HotbarBoxSize) return null; // clicked in the gap between boxes
+
+        return slot;
+    }
+
     private bool JustPressed(KeyboardState kb, Keys k) =>
         kb.IsKeyDown(k) && !_prevKeyboard.IsKeyDown(k);
 
@@ -354,27 +395,22 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
 
     private void DrawActionBar(SpriteBatch sb)
     {
-        const int boxSize = 32;
-        const int boxGap = 2;
         const int borderSize = 2;
-        const int boxCount = 10;
-        int barX = 8;
-        int barY = 830;
 
         // Slots 0-6 -> keys 1-7; slot 7 -> key 8; slot 8 -> key 9; slot 9 -> key 0.
         int[] slotKeyLabels = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 0 };
 
-        for (int i = 0; i < boxCount; i++)
+        for (int i = 0; i < HotbarBoxCount; i++)
         {
-            int x = barX + i * (boxSize + boxGap);
-            var outerRect = new Rectangle(x, barY, boxSize, boxSize);
+            int x = HotbarBarX + i * (HotbarBoxSize + HotbarBoxGap);
+            var outerRect = new Rectangle(x, HotbarBarY, HotbarBoxSize, HotbarBoxSize);
             sb.Draw(pixel, outerRect, Color.White * 0.3f);
 
-            var innerRect = new Rectangle(x + borderSize, barY + borderSize, boxSize - borderSize * 2, boxSize - borderSize * 2);
+            var innerRect = new Rectangle(x + borderSize, HotbarBarY + borderSize, HotbarBoxSize - borderSize * 2, HotbarBoxSize - borderSize * 2);
             sb.Draw(pixel, innerRect, Color.Black);
 
             string label = slotKeyLabels[i].ToString();
-            var labelPos = new Vector2(x + boxSize - borderSize - 8, barY + boxSize - borderSize - 12);
+            var labelPos = new Vector2(x + HotbarBoxSize - borderSize - 8, HotbarBarY + HotbarBoxSize - borderSize - 12);
             sb.DrawString(logFont, label, labelPos, Color.White);
         }
 
@@ -383,8 +419,8 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
             // Attacks in slots 0..N-1
             for (int i = 0; i < Math.Min(7, merc.Attacks.Count); i++)
             {
-                int x = barX + i * (boxSize + boxGap);
-                var rect = new Rectangle(x + borderSize, barY + borderSize, boxSize - borderSize * 2, boxSize - borderSize * 2);
+                int x = HotbarBarX + i * (HotbarBoxSize + HotbarBoxGap);
+                var rect = new Rectangle(x + borderSize, HotbarBarY + borderSize, HotbarBoxSize - borderSize * 2, HotbarBoxSize - borderSize * 2);
                 if (_skillIcons.TryGetValue(merc.Attacks[i].Name, out var icon))
                     sb.Draw(icon, rect, Color.White);
             }
@@ -394,8 +430,8 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
             for (int i = 0; i < Math.Min(skillSlots.Length, merc.Skills.Count); i++)
             {
                 int slot = skillSlots[i];
-                int x = barX + slot * (boxSize + boxGap);
-                var rect = new Rectangle(x + borderSize, barY + borderSize, boxSize - borderSize * 2, boxSize - borderSize * 2);
+                int x = HotbarBarX + slot * (HotbarBoxSize + HotbarBoxGap);
+                var rect = new Rectangle(x + borderSize, HotbarBarY + borderSize, HotbarBoxSize - borderSize * 2, HotbarBoxSize - borderSize * 2);
                 if (_skillIcons.TryGetValue(merc.Skills[i].Name, out var icon))
                     sb.Draw(icon, rect, Color.White);
             }
