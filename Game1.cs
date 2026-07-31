@@ -24,7 +24,7 @@ public class Game1 : Game
     {
         _graphics = new GraphicsDeviceManager(this)
         {
-            PreferredBackBufferWidth = 1280,
+            PreferredBackBufferWidth = 1920,
             PreferredBackBufferHeight = 900
         };
         Content.RootDirectory = "Content";
