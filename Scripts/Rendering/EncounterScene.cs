@@ -395,7 +395,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
             var pos = state.GetPosition(merc);
             var rect = new Rectangle(ContentX + pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize);
             sb.Draw(pixel, rect, Color.DodgerBlue);
-            if (merc == _selected)
+            if (merc == _selected || merc == turns.CurrentCreature)
                 DrawSelectionRing(sb, rect);
         }
         foreach (var enemy in state.Enemies)
