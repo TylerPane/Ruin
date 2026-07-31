@@ -31,6 +31,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
 
     private MouseState _prevMouse;
     private KeyboardState _prevKeyboard;
+    private int _contentOffsetX;
 
     private readonly CombatResolver _resolver = resolver;
     private readonly Dictionary<string, Texture2D> _skillIcons = skillIcons;
@@ -38,12 +39,17 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
 
     public void AddCombatLogEntries(IEnumerable<CombatLogEntry> entries) => _combatLog.AddEntries(entries);
 
-    public void Update(MouseState mouse)
+    private int ContentX => _contentOffsetX + LogPanelWidth;
+
+    public void Update(MouseState mouse, int viewportWidth)
     {
+        int contentWidth = LogPanelWidth + state.Map.Width * TileSize;
+        _contentOffsetX = Math.Max(0, (viewportWidth - contentWidth) / 2);
+
         var kb = Keyboard.GetState();
 
-        // Hover tile (clamped to map, accounting for the left log panel offset)
-        int hx = Math.Clamp((mouse.X - LogPanelWidth) / TileSize, 0, state.Map.Width - 1);
+        // Hover tile (clamped to map, accounting for the centered content offset + log panel)
+        int hx = Math.Clamp((mouse.X - ContentX) / TileSize, 0, state.Map.Width - 1);
         int hy = Math.Clamp(mouse.Y / TileSize, 0, state.Map.Height - 1);
         _hoverTile = (hx, hy);
 
@@ -165,10 +171,10 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
             return;
         }
 
-        int gridX = (mouse.X - LogPanelWidth) / TileSize;
+        int gridX = (mouse.X - ContentX) / TileSize;
         int gridY = mouse.Y / TileSize;
 
-        if (mouse.X < LogPanelWidth || gridX >= state.Map.Width || gridY < 0 || gridY >= state.Map.Height)
+        if (mouse.X < ContentX || gridX >= state.Map.Width || gridY < 0 || gridY >= state.Map.Height)
         {
             ResetToIdle();
             return;
@@ -299,12 +305,13 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         return offsets.Count == 1 && offsets[0] == (0, 0);
     }
 
-    private static int? HotbarSlotAt(int mouseX, int mouseY)
+    private int? HotbarSlotAt(int mouseX, int mouseY)
     {
+        int barX = _contentOffsetX + HotbarBarX;
         if (mouseY < HotbarBarY || mouseY >= HotbarBarY + HotbarBoxSize) return null;
-        if (mouseX < HotbarBarX) return null;
+        if (mouseX < barX) return null;
 
-        int offset = mouseX - HotbarBarX;
+        int offset = mouseX - barX;
         int stride = HotbarBoxSize + HotbarBoxGap;
         int slot = offset / stride;
         if (slot >= HotbarBoxCount) return null;
@@ -322,6 +329,9 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
 
     public void Draw(SpriteBatch sb)
     {
+        int contentWidth = LogPanelWidth + state.Map.Width * TileSize;
+        _contentOffsetX = Math.Max(0, (sb.GraphicsDevice.Viewport.Width - contentWidth) / 2);
+
         DrawTerrain(sb);
         DrawMovementHighlights(sb);
         DrawAttackHighlights(sb);
@@ -330,7 +340,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         DrawHpBars(sb);
         DrawActionBar(sb);
         DrawApPips(sb);
-        _combatLog.Draw(sb, pixel, logFont, new Rectangle(0, 0, LogPanelWidth, 900));
+        _combatLog.Draw(sb, pixel, logFont, new Rectangle(_contentOffsetX, 0, LogPanelWidth, 900));
     }
 
     private void DrawTerrain(SpriteBatch sb)
@@ -344,7 +354,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
                 EncounterTileType.Hazard   => new Color(200, 100, 0),
                 _                          => new Color(90, 90, 90)
             };
-            sb.Draw(pixel, new Rectangle(LogPanelWidth + x * TileSize, y * TileSize, TileSize, TileSize), color);
+            sb.Draw(pixel, new Rectangle(ContentX + x * TileSize, y * TileSize, TileSize, TileSize), color);
         }
     }
 
@@ -352,16 +362,16 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
     {
         if (_mode != Mode.Movement) return;
         foreach (var (pos, _) in _reachable)
-            sb.Draw(pixel, new Rectangle(LogPanelWidth + pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), Color.Yellow * 0.35f);
+            sb.Draw(pixel, new Rectangle(ContentX + pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), Color.Yellow * 0.35f);
     }
 
     private void DrawAttackHighlights(SpriteBatch sb)
     {
         if (_mode != Mode.Attack) return;
         foreach (var pos in _rangeTiles)
-            sb.Draw(pixel, new Rectangle(LogPanelWidth + pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), Color.LightGray * 0.25f);
+            sb.Draw(pixel, new Rectangle(ContentX + pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), Color.LightGray * 0.25f);
         foreach (var pos in _validTargets)
-            sb.Draw(pixel, new Rectangle(LogPanelWidth + pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), Color.Red * 0.35f);
+            sb.Draw(pixel, new Rectangle(ContentX + pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), Color.Red * 0.35f);
     }
 
     private void DrawAoePreview(SpriteBatch sb)
@@ -374,7 +384,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
             int x = _hoverTile.X + dx;
             int y = _hoverTile.Y + dy;
             if (x < 0 || x >= state.Map.Width || y < 0 || y >= state.Map.Height) continue;
-            sb.Draw(pixel, new Rectangle(LogPanelWidth + x * TileSize, y * TileSize, TileSize, TileSize), Color.Cyan * 0.5f);
+            sb.Draw(pixel, new Rectangle(ContentX + x * TileSize, y * TileSize, TileSize, TileSize), Color.Cyan * 0.5f);
         }
     }
 
@@ -383,7 +393,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         foreach (var merc in state.Mercenaries)
         {
             var pos = state.GetPosition(merc);
-            var rect = new Rectangle(LogPanelWidth + pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize);
+            var rect = new Rectangle(ContentX + pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize);
             sb.Draw(pixel, rect, Color.DodgerBlue);
             if (merc == _selected)
                 DrawSelectionRing(sb, rect);
@@ -391,7 +401,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         foreach (var enemy in state.Enemies)
         {
             var pos = state.GetPosition(enemy);
-            sb.Draw(pixel, new Rectangle(LogPanelWidth + pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), Color.Crimson);
+            sb.Draw(pixel, new Rectangle(ContentX + pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), Color.Crimson);
         }
     }
 
@@ -414,7 +424,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
             float cur = Math.Max(0, c.CurrentHp);
             int fillW = max <= 0 ? 0 : (int)Math.Round(TileSize * (cur / max));
 
-            int barX = LogPanelWidth + pos.X * TileSize;
+            int barX = ContentX + pos.X * TileSize;
             int barY = pos.Y * TileSize - 5;
             sb.Draw(pixel, new Rectangle(barX, barY, TileSize, 3), new Color(60, 0, 0));
             if (fillW > 0)
@@ -425,13 +435,14 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
     private void DrawActionBar(SpriteBatch sb)
     {
         const int borderSize = 2;
+        int barX = _contentOffsetX + HotbarBarX;
 
         // Slots 0-6 -> keys 1-7; slot 7 -> key 8; slot 8 -> key 9; slot 9 -> key 0.
         int[] slotKeyLabels = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 0 };
 
         for (int i = 0; i < HotbarBoxCount; i++)
         {
-            int x = HotbarBarX + i * (HotbarBoxSize + HotbarBoxGap);
+            int x = barX + i * (HotbarBoxSize + HotbarBoxGap);
             var outerRect = new Rectangle(x, HotbarBarY, HotbarBoxSize, HotbarBoxSize);
             sb.Draw(pixel, outerRect, Color.White * 0.3f);
 
@@ -448,7 +459,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
             // Attacks in slots 0..N-1
             for (int i = 0; i < Math.Min(7, merc.Attacks.Count); i++)
             {
-                int x = HotbarBarX + i * (HotbarBoxSize + HotbarBoxGap);
+                int x = barX + i * (HotbarBoxSize + HotbarBoxGap);
                 var rect = new Rectangle(x + borderSize, HotbarBarY + borderSize, HotbarBoxSize - borderSize * 2, HotbarBoxSize - borderSize * 2);
                 if (_skillIcons.TryGetValue(merc.Attacks[i].Name, out var icon))
                     sb.Draw(icon, rect, Color.White);
@@ -459,7 +470,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
             for (int i = 0; i < Math.Min(skillSlots.Length, merc.Skills.Count); i++)
             {
                 int slot = skillSlots[i];
-                int x = HotbarBarX + slot * (HotbarBoxSize + HotbarBoxGap);
+                int x = barX + slot * (HotbarBoxSize + HotbarBoxGap);
                 var rect = new Rectangle(x + borderSize, HotbarBarY + borderSize, HotbarBoxSize - borderSize * 2, HotbarBoxSize - borderSize * 2);
                 if (_skillIcons.TryGetValue(merc.Skills[i].Name, out var icon))
                     sb.Draw(icon, rect, Color.White);
@@ -474,7 +485,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         int remaining = state.GetRemainingActionPoints(_selected);
         const int pipSize = 8;
         const int pipGap = 4;
-        int x0 = 8;
+        int x0 = _contentOffsetX + HotbarBarX;
         int y0 = 810;
         for (int i = 0; i < max; i++)
         {
