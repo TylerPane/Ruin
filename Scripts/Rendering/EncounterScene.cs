@@ -12,11 +12,11 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
 {
     private const int TileSize = 16;
     private const int LogPanelWidth = 260;
+    private const int LogPanelMargin = 8;
 
     private const int HotbarBoxSize = 32;
     private const int HotbarBoxGap = 2;
     private const int HotbarBoxCount = 10;
-    private const int HotbarBarX = 8;
     private const int HotbarBarY = 830;
 
     private enum Mode { Idle, Movement, Attack }
@@ -31,7 +31,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
 
     private MouseState _prevMouse;
     private KeyboardState _prevKeyboard;
-    private int _contentOffsetX;
+    private int _mapOffsetX;
 
     private readonly CombatResolver _resolver = resolver;
     private readonly Dictionary<string, Texture2D> _skillIcons = skillIcons;
@@ -39,16 +39,16 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
 
     public void AddCombatLogEntries(IEnumerable<CombatLogEntry> entries) => _combatLog.AddEntries(entries);
 
-    private int ContentX => _contentOffsetX + LogPanelWidth;
+    private int ContentX => _mapOffsetX;
 
     public void Update(MouseState mouse, int viewportWidth)
     {
-        int contentWidth = LogPanelWidth + state.Map.Width * TileSize;
-        _contentOffsetX = Math.Max(0, (viewportWidth - contentWidth) / 2);
+        int mapWidth = state.Map.Width * TileSize;
+        _mapOffsetX = Math.Max(0, (viewportWidth - mapWidth) / 2);
 
         var kb = Keyboard.GetState();
 
-        // Hover tile (clamped to map, accounting for the centered content offset + log panel)
+        // Hover tile (clamped to map, accounting for the centered map offset)
         int hx = Math.Clamp((mouse.X - ContentX) / TileSize, 0, state.Map.Width - 1);
         int hy = Math.Clamp(mouse.Y / TileSize, 0, state.Map.Height - 1);
         _hoverTile = (hx, hy);
@@ -307,7 +307,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
 
     private int? HotbarSlotAt(int mouseX, int mouseY)
     {
-        int barX = _contentOffsetX + HotbarBarX;
+        int barX = HotbarBarX();
         if (mouseY < HotbarBarY || mouseY >= HotbarBarY + HotbarBoxSize) return null;
         if (mouseX < barX) return null;
 
@@ -329,8 +329,8 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
 
     public void Draw(SpriteBatch sb)
     {
-        int contentWidth = LogPanelWidth + state.Map.Width * TileSize;
-        _contentOffsetX = Math.Max(0, (sb.GraphicsDevice.Viewport.Width - contentWidth) / 2);
+        int mapWidth = state.Map.Width * TileSize;
+        _mapOffsetX = Math.Max(0, (sb.GraphicsDevice.Viewport.Width - mapWidth) / 2);
 
         DrawTerrain(sb);
         DrawMovementHighlights(sb);
@@ -340,7 +340,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         DrawHpBars(sb);
         DrawActionBar(sb);
         DrawApPips(sb);
-        _combatLog.Draw(sb, pixel, logFont, new Rectangle(_contentOffsetX, 0, LogPanelWidth, 900));
+        _combatLog.Draw(sb, pixel, logFont, new Rectangle(LogPanelMargin, 0, LogPanelWidth, 900));
     }
 
     private void DrawTerrain(SpriteBatch sb)
@@ -439,10 +439,17 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         }
     }
 
+    private int HotbarBarX()
+    {
+        int mapWidth = state.Map.Width * TileSize;
+        int hotbarWidth = HotbarBoxCount * HotbarBoxSize + (HotbarBoxCount - 1) * HotbarBoxGap;
+        return _mapOffsetX + Math.Max(0, (mapWidth - hotbarWidth) / 2);
+    }
+
     private void DrawActionBar(SpriteBatch sb)
     {
         const int borderSize = 2;
-        int barX = _contentOffsetX + HotbarBarX;
+        int barX = HotbarBarX();
 
         // Slots 0-6 -> keys 1-7; slot 7 -> key 8; slot 8 -> key 9; slot 9 -> key 0.
         int[] slotKeyLabels = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 0 };
@@ -492,7 +499,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         int remaining = state.GetRemainingActionPoints(_selected);
         const int pipSize = 8;
         const int pipGap = 4;
-        int x0 = _contentOffsetX + HotbarBarX;
+        int x0 = HotbarBarX();
         int y0 = 810;
         for (int i = 0; i < max; i++)
         {
