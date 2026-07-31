@@ -26,6 +26,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
     private Attack? _activeAttack;
     private Dictionary<(int X, int Y), int> _reachable = new();
     private HashSet<(int X, int Y)> _validTargets = new();
+    private HashSet<(int X, int Y)> _rangeTiles = new();
     private (int X, int Y) _hoverTile;
 
     private MouseState _prevMouse;
@@ -241,6 +242,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         _activeAttack = null;
         _reachable = new();
         _validTargets = new();
+        _rangeTiles = new();
     }
 
     private void EnterMovementMode()
@@ -249,6 +251,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         _mode = Mode.Movement;
         _activeAttack = null;
         _validTargets = new();
+        _rangeTiles = new();
         _reachable = MovementValidator.GetReachableTiles(_selected, state);
     }
 
@@ -258,22 +261,34 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         _mode = Mode.Attack;
         _activeAttack = attack;
         _reachable = new();
-        _validTargets = ComputeValidTargets(_selected, attack);
+        _rangeTiles = ComputeRangeTiles(_selected, attack);
+        _validTargets = ComputeValidTargets(_selected, attack, _rangeTiles);
     }
 
-    private HashSet<(int X, int Y)> ComputeValidTargets(Creature attacker, Attack attack)
+    private HashSet<(int X, int Y)> ComputeRangeTiles(Creature attacker, Attack attack)
     {
         var result = new HashSet<(int X, int Y)>();
-        bool singleTarget = IsSingleTarget(attack);
 
         // TODO(distance): switch from Chebyshev to Euclidean for circular range
         // (paired with CombatResolver.IsInRange).
         for (int x = 0; x < state.Map.Width; x++)
         for (int y = 0; y < state.Map.Height; y++)
         {
-            if (!_resolver.IsInRange(attacker, attack, (x, y), state)) continue;
-            if (singleTarget && state.GetCreatureAt(x, y) == null) continue;
-            result.Add((x, y));
+            if (_resolver.IsInRange(attacker, attack, (x, y), state))
+                result.Add((x, y));
+        }
+        return result;
+    }
+
+    private HashSet<(int X, int Y)> ComputeValidTargets(Creature attacker, Attack attack, HashSet<(int X, int Y)> rangeTiles)
+    {
+        var result = new HashSet<(int X, int Y)>();
+        bool singleTarget = IsSingleTarget(attack);
+
+        foreach (var tile in rangeTiles)
+        {
+            if (singleTarget && state.GetCreatureAt(tile.X, tile.Y) == null) continue;
+            result.Add(tile);
         }
         return result;
     }
@@ -343,6 +358,8 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
     private void DrawAttackHighlights(SpriteBatch sb)
     {
         if (_mode != Mode.Attack) return;
+        foreach (var pos in _rangeTiles)
+            sb.Draw(pixel, new Rectangle(LogPanelWidth + pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), Color.LightGray * 0.25f);
         foreach (var pos in _validTargets)
             sb.Draw(pixel, new Rectangle(LogPanelWidth + pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), Color.Red * 0.35f);
     }
