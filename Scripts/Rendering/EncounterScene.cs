@@ -370,8 +370,15 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         if (_mode != Mode.Attack) return;
         foreach (var pos in _rangeTiles)
             sb.Draw(pixel, new Rectangle(ContentX + pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), Color.LightGray * 0.25f);
-        foreach (var pos in _validTargets)
-            sb.Draw(pixel, new Rectangle(ContentX + pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), Color.Red * 0.35f);
+
+        // AOE attacks (e.g. Shout): every in-range tile is already a valid target, so
+        // red would cover the whole range with no distinct "range" vs "target" meaning.
+        // Only single-target attacks get the extra red "a creature is actually here" cue.
+        if (_activeAttack != null && IsSingleTarget(_activeAttack))
+        {
+            foreach (var pos in _validTargets)
+                sb.Draw(pixel, new Rectangle(ContentX + pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), Color.Red * 0.35f);
+        }
     }
 
     private void DrawAoePreview(SpriteBatch sb)
