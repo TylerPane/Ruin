@@ -46,6 +46,14 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         int mapWidth = state.Map.Width * TileSize;
         _mapOffsetX = Math.Max(0, (viewportWidth - mapWidth) / 2);
 
+        // Auto-select the mercenary whose turn it currently is, so the player
+        // doesn't have to click them before acting.
+        if (turns.CurrentCreature is Mercenary current && current != _selected && turns.CanMove(current))
+        {
+            _selected = current;
+            EnterMovementMode();
+        }
+
         var kb = Keyboard.GetState();
 
         // Hover tile (clamped to map, accounting for the centered map offset)
