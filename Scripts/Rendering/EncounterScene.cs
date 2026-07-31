@@ -366,14 +366,26 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         foreach (var merc in state.Mercenaries)
         {
             var pos = state.GetPosition(merc);
-            var color = merc == _selected ? Color.Cyan : Color.DodgerBlue;
-            sb.Draw(pixel, new Rectangle(LogPanelWidth + pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), color);
+            var rect = new Rectangle(LogPanelWidth + pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize);
+            sb.Draw(pixel, rect, Color.DodgerBlue);
+            if (merc == _selected)
+                DrawSelectionRing(sb, rect);
         }
         foreach (var enemy in state.Enemies)
         {
             var pos = state.GetPosition(enemy);
             sb.Draw(pixel, new Rectangle(LogPanelWidth + pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), Color.Crimson);
         }
+    }
+
+    private void DrawSelectionRing(SpriteBatch sb, Rectangle tileRect)
+    {
+        const int thickness = 2;
+        var ringColor = Color.Yellow;
+        sb.Draw(pixel, new Rectangle(tileRect.X - thickness, tileRect.Y - thickness, tileRect.Width + thickness * 2, thickness), ringColor);
+        sb.Draw(pixel, new Rectangle(tileRect.X - thickness, tileRect.Bottom, tileRect.Width + thickness * 2, thickness), ringColor);
+        sb.Draw(pixel, new Rectangle(tileRect.X - thickness, tileRect.Y - thickness, thickness, tileRect.Height + thickness * 2), ringColor);
+        sb.Draw(pixel, new Rectangle(tileRect.Right, tileRect.Y - thickness, thickness, tileRect.Height + thickness * 2), ringColor);
     }
 
     private void DrawHpBars(SpriteBatch sb)
