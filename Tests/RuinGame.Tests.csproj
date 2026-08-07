@@ -26,6 +26,7 @@
     <Compile Include="..\Scripts\**\*.cs" />
     <Compile Remove="..\Scripts\Rendering\**\*.cs" />
     <Compile Include="..\Scripts\Rendering\CombatLog.cs" />
+    <Compile Include="..\Scripts\Rendering\EnemyInspectWindow.cs" />
   </ItemGroup>
 
 </Project>
