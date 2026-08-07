@@ -13,7 +13,7 @@ public class PricklebackGoblin : Monstrosity
         Attacks.Add(new Attack("Skewer", 2, 4, 1, 100, new AttackShape(new[] { (0, 0) }), 5,
             onHit: new AttackEffect(AttackEffectType.Bleed, [new StatChange(CombatStat.HitPoints, 5, 5)], MinDuration: 1, MaxDuration: 3),
             cooldown: 1));
-        Attacks.Add(new Attack("Quill Spray", 0, 1, 1, 100, new AttackShape(new[] { (0, 0) }), 3,
+        Attacks.Add(new Attack("Quill Spray", 0, 1, 1, 100, AttackShape.CircularBurst(radius: 2), range: 0, minRange: 0,
             onHit: new AttackEffect(AttackEffectType.Bleed, [new StatChange(CombatStat.HitPoints, 5, 5)], MinDuration: 1, MaxDuration: 1),
             cooldown: 3));
     }
