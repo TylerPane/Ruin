@@ -72,7 +72,7 @@ public class CombatResolver(Func<int, int, int> roll)
         return entries;
     }
 
-    private static IEnumerable<string> DescribeEffect(AttackEffect effect)
+    public static IEnumerable<string> DescribeEffect(AttackEffect effect)
     {
         foreach (var statChange in effect.Stats)
         {
