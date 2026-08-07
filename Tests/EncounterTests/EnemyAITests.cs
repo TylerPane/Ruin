@@ -89,7 +89,7 @@ public class EnemyAITests
         var m = PlaceMerc(state, 6, 5);
 
         var startPos = state.GetPosition(g);
-        // Use AlwaysHit so the attack loop terminates after AP exhaustion.
+        // The attack loop terminates after 1 attack (MaxAttacksPerTurn default), not AP exhaustion.
         Ai().TakeTurn(g, state);
 
         // Goblin shouldn't have moved away from the merc — Chebyshev distance
@@ -111,19 +111,20 @@ public class EnemyAITests
     }
 
     [Fact]
-    public void TakeTurn_ChainsAttacksUntilAPExhausted()
+    public void TakeTurn_StopsAfterOneAttack_ByDefault()
     {
-        // Prickleback (Agility 6) → AP = 4. With Scratch/Skewer/QuillSpray at AP 1,
-        // it can attack 4 times. Use a high-HP merc that survives.
+        // Prickleback (Agility 6) → AP = 4, MaxAttacksPerTurn defaults to 1.
+        // Even with AP remaining, the goblin should stop after its one allowed attack.
         var state = MakeState();
         var g = PlaceGoblin(state, 5, 5);
-        var m = PlaceMerc(state, 6, 5, stamina: 100); // 200 HP
+        var m = PlaceMerc(state, 6, 5, stamina: 100); // 200 HP, survives
 
         int apBefore = state.GetRemainingActionPoints(g);
         Ai().TakeTurn(g, state);
 
         Assert.Equal(4, apBefore);
-        Assert.Equal(0, state.GetRemainingActionPoints(g));
+        // Only 1 attack (AP cost 1) should have been spent, leaving 3 AP.
+        Assert.Equal(3, state.GetRemainingActionPoints(g));
     }
 
     [Fact]
@@ -152,18 +153,13 @@ public class EnemyAITests
     public void TakeTurn_PicksHighestAverageDamageAttack()
     {
         // Goblin attacks: Scratch (1-3 avg 2), Skewer (2-4 avg 3), Quill Spray (0-1 avg 0.5).
-        // All three have AP 1 and reach an adjacent target — but Skewer has range 5,
-        // Scratch has range 1, Quill Spray has range 3. Adjacent merc → all in range.
-        // Goblin should pick Skewer first.
+        // All reach an adjacent target. Goblin should pick Skewer (highest avg) as its
+        // one attack this turn. Skewer applies Bleed on hit; Scratch does not — so a
+        // Bleed status effect after exactly one attack confirms Skewer was chosen.
         var state = MakeState();
         var g = PlaceGoblin(state, 5, 5);
-        var m = PlaceMerc(state, 6, 5, stamina: 100); // survive multiple hits
+        var m = PlaceMerc(state, 6, 5, stamina: 100); // survive the hit
 
-        // Track which attack fired by checking Bleed application. Scratch has no OnHit.
-        // Skewer applies Bleed on hit; Quill Spray also applies Bleed. Both Skewer and
-        // Quill Spray apply Bleed. To distinguish: Skewer has avg 3 (damage 2-4), so a
-        // single hit at max should deal more than Scratch's max (3). Verify damage on
-        // the FIRST attack.
         Func<int, int, int> roll = (min, max) =>
         {
             if (min == 1 && max == 2) return 1;     // hit count
@@ -171,13 +167,8 @@ public class EnemyAITests
             return max - 1;                          // damage = max - 1 (top of range)
         };
 
-        float hpBefore = m.CurrentHp;
         Ai(roll).TakeTurn(g, state);
 
-        // Skewer's max damage is 4 (MinDamage=2, MaxDamage=4 → roll max-1=3 since
-        // _rng.Next(2,5) on a queue returning max-1=4-1=3... wait).
-        // Simpler: just verify the merc has Bleed (only Skewer and Quill Spray apply it,
-        // not Scratch). If goblin picked Skewer first, Bleed is applied.
         Assert.NotEmpty(m.StatusEffects);
     }
 
@@ -193,8 +184,8 @@ public class EnemyAITests
         float healthyHpBefore = healthyMerc.CurrentHp;
         float woundedHpBefore = woundedMerc.CurrentHp;
 
-        // Single AI call — goblin will use AP on multiple attacks, both mercs in range.
-        // First-attack focus-fire should hit the wounded one.
+        // Single AI call — goblin makes its one allowed attack this turn, both mercs in
+        // range. Focus-fire should target the wounded one.
         Func<int, int, int> roll = (min, max) =>
         {
             if (min == 1 && max == 2) return 1;
@@ -204,5 +195,48 @@ public class EnemyAITests
         Ai(roll).TakeTurn(g, state);
 
         Assert.True(woundedMerc.CurrentHp < woundedHpBefore, "wounded merc should have taken damage first");
+    }
+
+    [Fact]
+    public void ChooseBestAttack_SkipsAttackOnCooldown_FallsBackToNextBest()
+    {
+        var state = MakeState();
+        var g = PlaceGoblin(state, 5, 5);
+        var m = PlaceMerc(state, 6, 5, stamina: 100);
+
+        var skewer = g.Attacks.First(a => a.Name == "Skewer");
+        g.StartCooldown(skewer); // Skewer (highest avg dmg) is now unavailable
+
+        Func<int, int, int> roll = (min, max) =>
+        {
+            if (min == 1 && max == 2) return 1;
+            if (min == 1 && max == 101) return 100;
+            return max - 1;
+        };
+        Ai(roll).TakeTurn(g, state);
+
+        // Scratch (next-best) has no OnHit effect; Quill Spray does apply Bleed.
+        // Since Scratch has higher avg damage (2) than Quill Spray (0.5), Scratch
+        // should be chosen — no Bleed should be applied.
+        Assert.Empty(m.StatusEffects);
+    }
+
+    [Fact]
+    public void TakeTurn_UsingAttackWithCooldown_StartsItsCooldown()
+    {
+        var state = MakeState();
+        var g = PlaceGoblin(state, 5, 5);
+        var m = PlaceMerc(state, 6, 5, stamina: 100);
+
+        Func<int, int, int> roll = (min, max) =>
+        {
+            if (min == 1 && max == 2) return 1;
+            if (min == 1 && max == 101) return 100;
+            return max - 1;
+        };
+        Ai(roll).TakeTurn(g, state);
+
+        var skewer = g.Attacks.First(a => a.Name == "Skewer");
+        Assert.True(g.IsOnCooldown(skewer));
     }
 }

@@ -16,7 +16,8 @@ public class EnemyAI(CombatResolver resolver)
 
         MoveToward(enemy, target, state);
 
-        while (true)
+        int attacksThisTurn = 0;
+        while (attacksThisTurn < enemy.MaxAttacksPerTurn)
         {
             if (!state.IsPlaced(enemy)) return entries;
             if (state.Mercenaries.Count == 0) return entries;
@@ -25,7 +26,10 @@ public class EnemyAI(CombatResolver resolver)
             if (pick == null) return entries;
 
             entries.AddRange(resolver.Resolve(enemy, pick.Value.attack, pick.Value.targetTile, state));
+            attacksThisTurn++;
         }
+
+        return entries;
     }
 
     private static Creature? FindNearestMerc(Creature enemy, EncounterState state)
@@ -76,6 +80,7 @@ public class EnemyAI(CombatResolver resolver)
 
         foreach (var attack in enemy.Attacks)
         {
+            if (enemy.IsOnCooldown(attack)) continue;
             if (state.GetRemainingActionPoints(enemy) < attack.ActionPointCost) continue;
 
             var tile = BestTargetTile(enemy, attack, state);
