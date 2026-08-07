@@ -239,4 +239,41 @@ public class EnemyAITests
         var skewer = g.Attacks.First(a => a.Name == "Skewer");
         Assert.True(g.IsOnCooldown(skewer));
     }
+
+    [Fact]
+    public void ChooseBestAttack_PrefersAoeAttack_WhenItHitsMultipleMercs()
+    {
+        // Scratch avg = 2 (single-target). Quill Spray avg = 0.5, but its radius-2
+        // self-centered burst can hit multiple adjacent mercs — with 3 mercs
+        // surrounding the goblin, Quill Spray's score (0.5 * 3 = 1.5) still trails
+        // Scratch's single-target score of 2 UNLESS enough mercs surround it.
+        // Use 5 mercs clustered around the goblin so Quill Spray's score
+        // (0.5 * 5 = 2.5) exceeds Scratch's (2 * 1 = 2).
+        var state = MakeState();
+        var g = PlaceGoblin(state, 10, 10);
+
+        // Cooldown-block Skewer so it can't win the comparison outright (Skewer avg=3
+        // would otherwise dominate regardless of this test's AOE-scoring concern).
+        var skewer = g.Attacks.First(a => a.Name == "Skewer");
+        g.StartCooldown(skewer);
+
+        PlaceMerc(state, 9, 10, stamina: 100);
+        PlaceMerc(state, 11, 10, stamina: 100);
+        PlaceMerc(state, 10, 9, stamina: 100);
+        PlaceMerc(state, 10, 11, stamina: 100);
+        var m5 = PlaceMerc(state, 9, 9, stamina: 100);
+
+        Func<int, int, int> roll = (min, max) =>
+        {
+            if (min == 1 && max == 2) return 1;
+            if (min == 1 && max == 101) return 100;
+            return max - 1;
+        };
+        Ai(roll).TakeTurn(g, state);
+
+        // Quill Spray applies Bleed on hit; Scratch does not. If the goblin picked
+        // Quill Spray (correctly valuing the multi-hit burst over single-target
+        // Scratch), every surrounded merc should show a Bleed status effect.
+        Assert.NotEmpty(m5.StatusEffects);
+    }
 }

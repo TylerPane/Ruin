@@ -76,25 +76,26 @@ public class EnemyAI(CombatResolver resolver)
 
     private (Attack attack, (int X, int Y) targetTile)? ChooseBestAttack(Creature enemy, EncounterState state)
     {
-        (Attack attack, (int X, int Y) tile, float avgDmg)? best = null;
+        (Attack attack, (int X, int Y) tile, float score)? best = null;
 
         foreach (var attack in enemy.Attacks)
         {
             if (enemy.IsOnCooldown(attack)) continue;
             if (state.GetRemainingActionPoints(enemy) < attack.ActionPointCost) continue;
 
-            var tile = BestTargetTile(enemy, attack, state);
-            if (tile == null) continue;
+            var pick = BestTargetTile(enemy, attack, state);
+            if (pick == null) continue;
 
             float avg = (attack.MinDamage + attack.MaxDamage) / 2f;
-            if (best == null || avg > best.Value.avgDmg)
-                best = (attack, tile.Value, avg);
+            float score = avg * pick.Value.hitCount;
+            if (best == null || score > best.Value.score)
+                best = (attack, (pick.Value.X, pick.Value.Y), score);
         }
 
         return best == null ? null : (best.Value.attack, best.Value.tile);
     }
 
-    private (int X, int Y)? BestTargetTile(Creature enemy, Attack attack, EncounterState state)
+    private (int X, int Y, int hitCount)? BestTargetTile(Creature enemy, Attack attack, EncounterState state)
     {
         bool singleTarget = IsSingleTarget(attack);
         var offsets = attack.AttackShape.Offsets.ToList();
@@ -120,7 +121,7 @@ public class EnemyAI(CombatResolver resolver)
                     bestTile = mp;
                 }
             }
-            return bestMerc == null ? null : bestTile;
+            return bestMerc == null ? null : (bestTile.X, bestTile.Y, 1);
         }
 
         // AOE — pick the in-range tile whose offsets catch the most mercs.
@@ -146,7 +147,7 @@ public class EnemyAI(CombatResolver resolver)
                 bestAoeTile = (x, y);
             }
         }
-        return bestAoeTile;
+        return bestAoeTile == null ? null : (bestAoeTile.Value.X, bestAoeTile.Value.Y, bestCount);
     }
 
     private static bool IsSingleTarget(Attack attack)
