@@ -14,6 +14,7 @@ public class EnemyInspectWindow
     private const int AttackBoxSize = 24;
     private const int AttackBoxGap = 4;
     private const int Padding = 8;
+    private const int NameLineHeight = 18;
 
     private Rectangle _bounds;
     private int? _hoveredAttackIndex;
@@ -50,7 +51,7 @@ public class EnemyInspectWindow
     {
         if (!IsOpen || InspectedEnemy == null) return null;
 
-        int rowY = _bounds.Y + PortraitSize + Padding * 2;
+        int rowY = _bounds.Y + PortraitSize + NameLineHeight + Padding * 2;
         for (int i = 0; i < InspectedEnemy.Attacks.Count; i++)
         {
             int boxX = _bounds.X + Padding + i * (AttackBoxSize + AttackBoxGap);
@@ -81,7 +82,7 @@ public class EnemyInspectWindow
         sb.Draw(pixel, portraitRect, Color.Crimson);
         sb.DrawString(font, InspectedEnemy.Name, new Vector2(portraitRect.X, portraitRect.Bottom + 2), Color.White);
 
-        int rowY = _bounds.Y + PortraitSize + Padding * 2;
+        int rowY = _bounds.Y + PortraitSize + NameLineHeight + Padding * 2;
         for (int i = 0; i < InspectedEnemy.Attacks.Count; i++)
         {
             int boxX = _bounds.X + Padding + i * (AttackBoxSize + AttackBoxGap);
@@ -92,7 +93,7 @@ public class EnemyInspectWindow
         {
             string tooltip = FormatTooltip(InspectedEnemy.Attacks[idx]);
             var textSize = font.MeasureString(tooltip);
-            var tooltipPos = new Vector2(_bounds.X, _bounds.Bottom + 4);
+            var tooltipPos = new Vector2(_bounds.X, rowY + AttackBoxSize + 4);
             int boxWidth = Math.Max(WindowWidth, (int)textSize.X + 8);
             int boxHeight = (int)textSize.Y + 8;
             sb.Draw(pixel, new Rectangle((int)tooltipPos.X, (int)tooltipPos.Y, boxWidth, boxHeight), Color.Black * 0.9f);

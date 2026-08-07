@@ -88,9 +88,10 @@ public class EnemyInspectWindowTests
         window.Open(enemy, (0, 0), viewportWidth: 1920, viewportHeight: 900);
 
         // The window opens anchored at (0,0). HotboxAt's rowY = bounds.Y + PortraitSize (48)
-        // + Padding * 2 (16) = 64; the first box starts at bounds.X + Padding (8), spanning
-        // [8, 32) horizontally and [64, 88) vertically. (12, 70) sits inside both ranges.
-        int? hit = window.HotboxAt(12, 70);
+        // + NameLineHeight (18) + Padding * 2 (16) = 82; the first box starts at bounds.X +
+        // Padding (8), spanning [8, 32) horizontally and [82, 106) vertically. (12, 90) sits
+        // inside both ranges.
+        int? hit = window.HotboxAt(12, 90);
 
         Assert.Equal(0, hit);
     }
