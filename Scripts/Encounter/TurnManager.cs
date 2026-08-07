@@ -61,6 +61,7 @@ public class TurnManager(EncounterState state)
             state.ResetMovement(creature);
             state.ResetActionPoints(creature);
             creature.TickStatusEffects();
+            creature.TickCooldowns();
             break;
         }
     }
