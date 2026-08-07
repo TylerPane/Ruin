@@ -91,8 +91,11 @@ public class EnemyInspectWindow
         if (_hoveredAttackIndex is int idx && idx < InspectedEnemy.Attacks.Count)
         {
             string tooltip = FormatTooltip(InspectedEnemy.Attacks[idx]);
+            var textSize = font.MeasureString(tooltip);
             var tooltipPos = new Vector2(_bounds.X, _bounds.Bottom + 4);
-            sb.Draw(pixel, new Rectangle((int)tooltipPos.X, (int)tooltipPos.Y, WindowWidth, 40), Color.Black * 0.9f);
+            int boxWidth = Math.Max(WindowWidth, (int)textSize.X + 8);
+            int boxHeight = (int)textSize.Y + 8;
+            sb.Draw(pixel, new Rectangle((int)tooltipPos.X, (int)tooltipPos.Y, boxWidth, boxHeight), Color.Black * 0.9f);
             sb.DrawString(font, tooltip, tooltipPos + new Vector2(4, 4), Color.White);
         }
     }
