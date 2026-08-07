@@ -91,7 +91,7 @@ public class Game1 : Game
             return;
         }
 
-        _scene.Update(Mouse.GetState(), GraphicsDevice.Viewport.Width);
+        _scene.Update(Mouse.GetState(), GraphicsDevice.Viewport.Width, GraphicsDevice.Viewport.Height);
 
         if (_turnManager.CurrentCreature is not Mercenary && _turnManager.CanMove(_turnManager.CurrentCreature!))
         {

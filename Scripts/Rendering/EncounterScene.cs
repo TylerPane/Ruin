@@ -32,19 +32,25 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
     private MouseState _prevMouse;
     private KeyboardState _prevKeyboard;
     private int _mapOffsetX;
+    private int _lastViewportWidth;
+    private int _lastViewportHeight;
+    private bool _inspectClickConsumed;
 
     private readonly CombatResolver _resolver = resolver;
     private readonly Dictionary<string, Texture2D> _skillIcons = skillIcons;
     private readonly CombatLog _combatLog = new();
+    private readonly EnemyInspectWindow _inspectWindow = new();
 
     public void AddCombatLogEntries(IEnumerable<CombatLogEntry> entries) => _combatLog.AddEntries(entries);
 
     private int ContentX => _mapOffsetX;
 
-    public void Update(MouseState mouse, int viewportWidth)
+    public void Update(MouseState mouse, int viewportWidth, int viewportHeight)
     {
         int mapWidth = state.Map.Width * TileSize;
         _mapOffsetX = Math.Max(0, (viewportWidth - mapWidth) / 2);
+        _lastViewportWidth = viewportWidth;
+        _lastViewportHeight = viewportHeight;
 
         // Auto-select the mercenary whose turn it currently is, so the player
         // doesn't have to click them before acting.
@@ -61,10 +67,13 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         int hy = Math.Clamp(mouse.Y / TileSize, 0, state.Map.Height - 1);
         _hoverTile = (hx, hy);
 
+        _inspectWindow.UpdateHover(mouse.X, mouse.Y);
+
         int scrollDelta = (mouse.ScrollWheelValue - _prevMouse.ScrollWheelValue) / 40;
         if (scrollDelta != 0)
             _combatLog.HandleScroll(-scrollDelta);
 
+        _inspectClickConsumed = HandleInspectWindow(mouse);
         HandleKeyboard(kb);
         HandleMouseClick(mouse);
 
@@ -76,6 +85,39 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
     // Input
     // ────────────────────────────────────────────────────────────────────────
 
+    private bool HandleInspectWindow(MouseState mouse)
+    {
+        bool wasOpen = _inspectWindow.IsOpen;
+        bool leftJustClicked = mouse.LeftButton == ButtonState.Pressed && _prevMouse.LeftButton == ButtonState.Released;
+        bool rightJustClicked = mouse.RightButton == ButtonState.Pressed && _prevMouse.RightButton == ButtonState.Released;
+
+        if (rightJustClicked)
+        {
+            int gx = (mouse.X - ContentX) / TileSize;
+            int gy = mouse.Y / TileSize;
+            var candidate = gx >= 0 && gx < state.Map.Width && gy >= 0 && gy < state.Map.Height
+                ? state.GetCreatureAt(gx, gy)
+                : null;
+
+            if (candidate != null && state.Enemies.Contains(candidate))
+                _inspectWindow.Open(candidate, (mouse.X, mouse.Y), _lastViewportWidth, _lastViewportHeight);
+            else
+                _inspectWindow.Close();
+
+            return true; // right-click is always consumed, whether it opened, re-anchored, or closed
+        }
+
+        if (leftJustClicked && wasOpen)
+        {
+            if (!_inspectWindow.Contains(mouse.X, mouse.Y))
+                _inspectWindow.Close();
+            return true; // consumed whenever the window was open at the start of this click — even
+                          // the click that closes it — so it never also moves/attacks/clicks the hotbar
+        }
+
+        return false;
+    }
+
     private void HandleKeyboard(KeyboardState kb)
     {
         // Space: end the selected merc's turn (any mode).
@@ -86,11 +128,19 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
             return;
         }
 
-        // Esc: in Attack mode, return to Movement.
-        if (JustPressed(kb, Keys.Escape) && _mode == Mode.Attack)
+        // Esc: close the inspect window if open, otherwise (in Attack mode) return to Movement.
+        if (JustPressed(kb, Keys.Escape))
         {
-            EnterMovementMode();
-            return;
+            if (_inspectWindow.IsOpen)
+            {
+                _inspectWindow.Close();
+                return;
+            }
+            if (_mode == Mode.Attack)
+            {
+                EnterMovementMode();
+                return;
+            }
         }
 
         // Number keys 1-9: pick attack while in Movement or Attack mode.
@@ -171,6 +221,8 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
     {
         if (mouse.LeftButton != ButtonState.Pressed || _prevMouse.LeftButton != ButtonState.Released)
             return;
+
+        if (_inspectClickConsumed) return; // HandleInspectWindow already handled this click
 
         int? clickedSlot = HotbarSlotAt(mouse.X, mouse.Y);
         if (clickedSlot != null && _selected != null && (_mode == Mode.Movement || _mode == Mode.Attack))
@@ -349,6 +401,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         DrawActionBar(sb);
         DrawApPips(sb);
         _combatLog.Draw(sb, pixel, logFont, new Rectangle(LogPanelMargin, 0, LogPanelWidth, 900));
+        _inspectWindow.Draw(sb, pixel, logFont);
     }
 
     private void DrawTerrain(SpriteBatch sb)
