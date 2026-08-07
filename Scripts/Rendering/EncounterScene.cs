@@ -67,13 +67,12 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         int hy = Math.Clamp(mouse.Y / TileSize, 0, state.Map.Height - 1);
         _hoverTile = (hx, hy);
 
-        _inspectWindow.UpdateHover(mouse.X, mouse.Y);
-
         int scrollDelta = (mouse.ScrollWheelValue - _prevMouse.ScrollWheelValue) / 40;
         if (scrollDelta != 0)
             _combatLog.HandleScroll(-scrollDelta);
 
         _inspectClickConsumed = HandleInspectWindow(mouse);
+        _inspectWindow.UpdateHover(mouse.X, mouse.Y);
         HandleKeyboard(kb);
         HandleMouseClick(mouse);
 
@@ -99,12 +98,16 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
                 ? state.GetCreatureAt(gx, gy)
                 : null;
 
-            if (candidate != null && state.Enemies.Contains(candidate))
-                _inspectWindow.Open(candidate, (mouse.X, mouse.Y), _lastViewportWidth, _lastViewportHeight);
+            bool validCandidate = candidate != null && state.Enemies.Contains(candidate);
+            if (validCandidate)
+                _inspectWindow.Open(candidate!, (mouse.X, mouse.Y), _lastViewportWidth, _lastViewportHeight);
             else
                 _inspectWindow.Close();
 
-            return true; // right-click is always consumed, whether it opened, re-anchored, or closed
+            // Only consumed if the window was open before this click (even a click that closes it)
+            // or a valid enemy candidate just opened/re-anchored it. A right-click on empty ground
+            // with nothing open beforehand is not consumed, leaving it free for future handlers.
+            return wasOpen || validCandidate;
         }
 
         if (leftJustClicked && wasOpen)
