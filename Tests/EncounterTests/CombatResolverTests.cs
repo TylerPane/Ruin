@@ -492,4 +492,27 @@ public class CombatResolverTests
         Assert.Single(entries);
         Assert.True(entries[0].Damage < 0);
     }
+
+    [Fact]
+    public void Resolve_AttackWithCooldown_StartsCooldownOnAttacker()
+    {
+        var (state, attacker, defender) = MakeFight();
+        var attack = new Attack("Cooldown Test", 1, 1, 1, 100,
+            new AttackShape(new[] { (0, 0) }), range: 5, cooldown: 2);
+
+        new CombatResolver(Rolls(1, 100, 0, 1)).Resolve(attacker, attack, (1, 0), state);
+
+        Assert.True(attacker.IsOnCooldown(attack));
+    }
+
+    [Fact]
+    public void Resolve_AttackWithoutCooldown_NeverStartsCooldown()
+    {
+        var (state, attacker, defender) = MakeFight();
+        var attack = BasicAttack(minDmg: 1, maxDmg: 1, accuracy: 100);
+
+        new CombatResolver(Rolls(1, 100, 0, 1)).Resolve(attacker, attack, (1, 0), state);
+
+        Assert.False(attacker.IsOnCooldown(attack));
+    }
 }

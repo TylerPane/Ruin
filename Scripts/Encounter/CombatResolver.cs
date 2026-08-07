@@ -9,6 +9,7 @@ public class CombatResolver(Func<int, int, int> roll)
     {
         var entries = new List<CombatLogEntry>();
         state.SpendActionPoints(attacker, attack.ActionPointCost);
+        attacker.StartCooldown(attack);
         int hitCount = roll(attack.MinHits, attack.MaxHits + 1);
 
         foreach (var (dx, dy) in attack.AttackShape.Offsets)
