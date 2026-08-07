@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Give attacks a per-use cooldown (Skewer: 1 round, Quill Spray: 3 rounds), and cap enemy attacks per turn (default 1) instead of `EnemyAI` looping until AP runs out.
+**Goal:** Give attacks a per-use cooldown (Skewer: 1 round, Quill Spray: 3 rounds), cap enemy attacks per turn (default 1) instead of `EnemyAI` looping until AP runs out, give Quill Spray a real self-centered circular burst shape, and make `EnemyAI` value AOE attacks by how many mercenaries they'd actually hit instead of raw average damage.
 
-**Architecture:** `Attack` gains a `Cooldown` field (default 0, meaning "no cooldown" — every existing attack and every mercenary attack/skill keeps this default). `Creature` gains a `MaxAttacksPerTurn` field (default 1) and private cooldown-tracking state (`_cooldownsRemaining`), with `IsOnCooldown`/`StartCooldown`/`TickCooldowns` methods. `CombatResolver.Resolve` starts a cooldown after using an attack that has one. `TurnManager.AdvanceToNextTurn` ticks cooldowns down for the creature whose turn is starting, alongside the existing `TickStatusEffects()` call. `EnemyAI.ChooseBestAttack` skips cooldown-blocked attacks; `EnemyAI.TakeTurn` stops after `MaxAttacksPerTurn` attacks.
+**Architecture:** `Attack` gains a `Cooldown` field (default 0, meaning "no cooldown" — every existing attack and every mercenary attack/skill keeps this default). `Creature` gains a `MaxAttacksPerTurn` field (default 1) and private cooldown-tracking state (`_cooldownsRemaining`), with `IsOnCooldown`/`StartCooldown`/`TickCooldowns` methods. `CombatResolver.Resolve` starts a cooldown after using an attack that has one. `TurnManager.AdvanceToNextTurn` ticks cooldowns down for the creature whose turn is starting, alongside the existing `TickStatusEffects()` call. `EnemyAI.ChooseBestAttack` skips cooldown-blocked attacks; `EnemyAI.TakeTurn` stops after `MaxAttacksPerTurn` attacks. Separately, `AttackShape` gains a shared `CircularBurst(radius)` factory (Euclidean distance, replacing the diamond/Manhattan shape `Unarmed.Shout` used privately); Shout switches to it at the same radius, and Quill Spray becomes a self-centered radius-2 circular burst (`Range: 0, MinRange: 0`, so the goblin's own tile is the only valid "target," and the burst radiates from wherever it's standing). `EnemyAI`'s scoring changes from raw `avgDmg` to `avgDmg * mercsHitByBurst`, so a goblin surrounded by multiple mercs correctly values an AOE attack over a single-target one when it actually would hit more targets.
 
 **Tech Stack:** C# / .NET 8 / xUnit
 
@@ -14,7 +14,10 @@
 - `Attack.Cooldown` defaults to `0` (no cooldown). Every existing `Attack` constructor call across the codebase (mercenary weapons, mercenary skills, existing enemy attacks other than Skewer/Quill Spray) must continue compiling unchanged — `Cooldown` is a new optional trailing parameter.
 - `Creature.MaxAttacksPerTurn` defaults to `1`. No existing creature needs to override it in this plan — Prickleback Goblin's default of 1 attack per turn is the desired behavior described in the spec.
 - Cooldowns apply uniformly regardless of who uses the attack (`CombatResolver.Resolve` is the single funnel point), even though only enemy attacks are expected to carry a nonzero `Cooldown` today.
-- Several existing `EnemyAITests` assert the OLD "attacks until AP exhausted" behavior and must be updated in this plan to match the new default-1-attack-per-turn behavior — this is a required part of Task 4, not an incidental side effect.
+- Several existing `EnemyAITests` assert the OLD "attacks until AP exhausted" behavior and must be updated in this plan to match the new default-1-attack-per-turn behavior — this is a required part of Task 6, not an incidental side effect.
+- Circular bursts use Euclidean distance (`sqrt(dx² + dy²) <= radius`), not Manhattan (diamond) or Chebyshev (square). Shout keeps its existing radius (4) — only its shape's distance metric changes, not the number.
+- Quill Spray's burst is self-centered: the goblin always targets its own tile (`Range: 0, MinRange: 0` makes that the only tile `CombatResolver.IsInRange` accepts), and the radius-2 burst shape hits whatever is within 2 tiles of the goblin's own position. This is a targeting-model change from Quill Spray's old behavior (pick a distant tile up to range 3, hit only that one tile).
+- `EnemyAI.ChooseBestAttack`'s scoring change (`avgDmg * hitCount`) must not change any single-target attack's relative ranking versus another single-target attack — `hitCount` is always `1` for single-target picks, so `avg * 1 == avg`, identical to the old scoring in every scenario with at most one target per attack.
 
 ---
 
@@ -26,10 +29,15 @@
 | `Scripts/Creatures/Creature.cs` | Add `MaxAttacksPerTurn` field, `_cooldownsRemaining` dict, `IsOnCooldown`/`StartCooldown`/`TickCooldowns` methods |
 | `Scripts/Encounter/CombatResolver.cs` | Start the attacker's cooldown after resolving an attack with `Cooldown > 0` |
 | `Scripts/Encounter/TurnManager.cs` | Call `creature.TickCooldowns()` alongside the existing `TickStatusEffects()` call |
-| `Scripts/Creatures/Monstrosities/Goblins/PricklebackGoblin.cs` | Give Skewer `Cooldown: 1`, Quill Spray `Cooldown: 3` |
-| `Scripts/Encounter/EnemyAI.cs` | `ChooseBestAttack` skips cooldown-blocked attacks; `TakeTurn` stops after `MaxAttacksPerTurn` attacks |
+| `Scripts/Creatures/Monstrosities/Goblins/PricklebackGoblin.cs` | Give Skewer `Cooldown: 1`, Quill Spray `Cooldown: 3`; later, make Quill Spray a self-centered circular burst |
+| `Scripts/Encounter/EnemyAI.cs` | `ChooseBestAttack` skips cooldown-blocked attacks and scores by `avgDmg * hitCount`; `TakeTurn` stops after `MaxAttacksPerTurn` attacks; `BestTargetTile` returns hit-count alongside the tile |
+| `Scripts/Combat/AttackShape.cs` | Add `CircularBurst(radius)` static factory |
+| `Scripts/Weapons/Unarmed.cs` | Switch Shout to `AttackShape.CircularBurst`, remove the old private `BurstOffsets` helper |
 | `Tests/CombatTests/AttackCooldownTests.cs` | Create — tests for `Creature`'s cooldown methods and `CombatResolver` starting cooldowns |
-| `Tests/EncounterTests/EnemyAITests.cs` | Modify — update tests that assumed multi-attack-per-turn behavior; add cooldown-fallback and attack-cap tests |
+| `Tests/EncounterTests/EnemyAITests.cs` | Modify — update tests that assumed multi-attack-per-turn behavior; add cooldown-fallback, attack-cap, and AOE-scoring tests |
+| `Tests/CombatTests/AttackShapeTests.cs` | Create — tests for `AttackShape.CircularBurst` |
+| `Tests/WeaponTests/UnarmedTests.cs` | Modify — replace the diamond-shape Shout test with a circular-shape one |
+| `Tests/CreatureTests/PricklebackGoblinTests.cs` | Create (if it doesn't already exist) — tests for Quill Spray's self-centered targeting and shape |
 
 ---
 
@@ -794,9 +802,548 @@ git commit -m "feat: EnemyAI skips cooldown-blocked attacks and stops after MaxA
 
 ---
 
+## Task 7: Shared circular burst-shape helper on `AttackShape`
+
+**Files:**
+- Modify: `Scripts/Combat/AttackShape.cs`
+- Modify: `Scripts/Weapons/Unarmed.cs`
+- Modify: `Tests/WeaponTests/UnarmedTests.cs`
+
+**Interfaces:**
+- Produces: `AttackShape.CircularBurst(int radius) : AttackShape` — a static factory returning offsets `(dx, dy)` where `sqrt(dx² + dy²) <= radius`, including `(0, 0)`. Consumed by `Unarmed.Shout` (this task) and `PricklebackGoblin.QuillSpray` (Task 8).
+
+Shout currently uses a private `BurstOffsets(radius)` helper local to `Unarmed` with Manhattan distance (a diamond). This task replaces it with a shared Euclidean-distance helper on `AttackShape` itself (a shape concept, not weapon-specific), and switches Shout to use it — same radius (4), rounder shape. `CombatResolver.IsInRange` already has a standing TODO comment planning an eventual Euclidean switch for range checks; this task is the shape equivalent of that same direction, though `IsInRange` itself is untouched here — this task only changes how burst *shapes* are generated, not how *range-to-target* is checked.
+
+- [ ] **Step 1: Write failing tests for the new circular shape**
+
+Replace the `Shout_HasDiamondBurstShape_ManhattanDistanceFour` test in `Tests/WeaponTests/UnarmedTests.cs` — the diamond shape no longer exists after this task, so this test's assertions must change to describe the new circle:
+
+```csharp
+    [Fact]
+    public void Shout_HasCircularBurstShape_EuclideanDistanceFour()
+    {
+        var a = _u.Attacks.First(a => a.Name == "Shout");
+        var offsets = a.AttackShape.Offsets.ToHashSet();
+
+        // Caster's own tile is in the burst (self-buff).
+        Assert.Contains((0, 0), offsets);
+
+        // The 4 outermost cardinal tiles (distance exactly 4).
+        Assert.Contains((4, 0),  offsets);
+        Assert.Contains((-4, 0), offsets);
+        Assert.Contains((0, 4),  offsets);
+        Assert.Contains((0, -4), offsets);
+
+        // A diagonal within Euclidean 4: sqrt(2²+2²) ≈ 2.83 <= 4.
+        Assert.Contains((2, 2), offsets);
+
+        // Just past distance 4 on the diagonal: sqrt(3²+3²) ≈ 4.24 > 4.
+        Assert.DoesNotContain((3, 3), offsets);
+
+        // A Manhattan-diamond tile that would have been included under the OLD
+        // shape (|3|+|2|=5, outside Manhattan-4) but is now excluded on distance
+        // grounds too: sqrt(3²+2²) ≈ 3.6 <= 4, so it's actually INCLUDED under
+        // Euclidean distance — the circle is rounder/wider on axes than the
+        // diamond, not strictly smaller. Assert inclusion instead:
+        Assert.Contains((3, 2), offsets);
+
+        // Straight past the radius on an axis is still excluded either way.
+        Assert.DoesNotContain((5, 0), offsets);
+    }
+```
+
+Also add a direct test of the new helper itself. Add this to a new file `Tests/CombatTests/AttackShapeTests.cs`:
+
+```csharp
+using RuinGamePDT.Combat;
+
+namespace RuinGamePDT.Tests;
+
+public class AttackShapeTests
+{
+    [Fact]
+    public void CircularBurst_RadiusZero_ContainsOnlyOrigin()
+    {
+        var offsets = AttackShape.CircularBurst(0).Offsets.ToHashSet();
+
+        Assert.Single(offsets);
+        Assert.Contains((0, 0), offsets);
+    }
+
+    [Fact]
+    public void CircularBurst_RadiusTwo_ContainsOriginAndCardinalsButNotDiagonalCorner()
+    {
+        var offsets = AttackShape.CircularBurst(2).Offsets.ToHashSet();
+
+        Assert.Contains((0, 0), offsets);
+        Assert.Contains((2, 0), offsets);
+        Assert.Contains((0, 2), offsets);
+        Assert.Contains((-2, 0), offsets);
+        Assert.Contains((0, -2), offsets);
+
+        // sqrt(2²+2²) ≈ 2.83 > 2 — excluded.
+        Assert.DoesNotContain((2, 2), offsets);
+
+        // sqrt(1²+1²) ≈ 1.41 <= 2 — included.
+        Assert.Contains((1, 1), offsets);
+    }
+}
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `dotnet test --filter "AttackShapeTests|Shout_HasCircularBurstShape"`
+Expected: FAIL — `AttackShape.CircularBurst` does not exist yet, and the old diamond-shape test name/assertions are gone so nothing runs under that name (confirms the replacement happened, not a duplicate)
+
+- [ ] **Step 3: Add `CircularBurst` to `AttackShape`**
+
+Replace the full contents of `Scripts/Combat/AttackShape.cs`:
+
+```csharp
+namespace RuinGamePDT.Combat;
+
+public record AttackShape(IEnumerable<(int x, int y)> Offsets)
+{
+    public static AttackShape CircularBurst(int radius)
+    {
+        var offsets = new List<(int, int)>();
+        for (int x = -radius; x <= radius; x++)
+        for (int y = -radius; y <= radius; y++)
+            if (Math.Sqrt(x * x + y * y) <= radius)
+                offsets.Add((x, y));
+        return new AttackShape(offsets);
+    }
+}
+```
+
+- [ ] **Step 4: Switch `Shout` to the new shape and remove the old helper**
+
+In `Scripts/Weapons/Unarmed.cs`, replace:
+
+```csharp
+        Attacks.Add(new Attack(
+            name: "Shout",
+            minDamage: 0,
+            maxDamage: 0,
+            actionPointCost: 1,
+            accuracy: 100,
+            attackShape: new AttackShape(BurstOffsets(radius: 4)),
+            range: 4,
+            reaction: null,
+            onHit: new AttackEffect(AttackEffectType.StatIncrease, [new StatChange(CombatStat.PhysicalDefense, 2, 2)], MinDuration: 3, MaxDuration: 3),
+            onCrit: null
+        ));
+    }
+
+    private static IEnumerable<(int, int)> BurstOffsets(int radius)
+    {
+        var offsets = new List<(int, int)>();
+        for (int x = -radius; x <= radius; x++)
+            for (int y = -radius; y <= radius; y++)
+                if (Math.Abs(x) + Math.Abs(y) <= radius)
+                    offsets.Add((x, y));
+        return offsets;
+    }
+}
+```
+
+With:
+
+```csharp
+        Attacks.Add(new Attack(
+            name: "Shout",
+            minDamage: 0,
+            maxDamage: 0,
+            actionPointCost: 1,
+            accuracy: 100,
+            attackShape: AttackShape.CircularBurst(radius: 4),
+            range: 4,
+            reaction: null,
+            onHit: new AttackEffect(AttackEffectType.StatIncrease, [new StatChange(CombatStat.PhysicalDefense, 2, 2)], MinDuration: 3, MaxDuration: 3),
+            onCrit: null
+        ));
+    }
+}
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `dotnet test --filter "AttackShapeTests|UnarmedTests"`
+Expected: all pass
+
+- [ ] **Step 6: Run full test suite**
+
+Run: `dotnet test`
+Expected: all tests pass, 0 failures
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add Scripts/Combat/AttackShape.cs Scripts/Weapons/Unarmed.cs Tests/WeaponTests/UnarmedTests.cs Tests/CombatTests/AttackShapeTests.cs
+git commit -m "feat: add AttackShape.CircularBurst, switch Shout from diamond to circular burst"
+```
+
+---
+
+## Task 8: Quill Spray becomes a self-centered circular burst
+
+**Files:**
+- Modify: `Scripts/Creatures/Monstrosities/Goblins/PricklebackGoblin.cs`
+- Test: `Tests/CreatureTests/PricklebackGoblinTests.cs` (create if it doesn't already exist — check first)
+
+**Interfaces:**
+- Consumes: `AttackShape.CircularBurst` (Task 7).
+
+Quill Spray changes from a single-tile, range-3 targeted attack to a self-centered radius-2 circular burst: `Range: 0, MinRange: 0` (only the goblin's own tile satisfies `CombatResolver.IsInRange` at those values, so it never needs a separate target — the burst always radiates from wherever the goblin is standing) and `attackShape: AttackShape.CircularBurst(radius: 2)`.
+
+- [ ] **Step 1: Check for an existing Prickleback Goblin test file**
+
+Run: `Get-ChildItem -Recurse Tests -Filter "*Goblin*"` (PowerShell) or search for a file matching `*PricklebackGoblin*Test*` under `Tests/`. If one already exists, add to it; if not, create `Tests/CreatureTests/PricklebackGoblinTests.cs` fresh with the namespace `RuinGamePDT.Tests` matching every other test file in the project.
+
+- [ ] **Step 2: Write failing tests**
+
+```csharp
+using RuinGamePDT.Combat;
+using RuinGamePDT.Creatures;
+
+namespace RuinGamePDT.Tests;
+
+public class PricklebackGoblinTests
+{
+    [Fact]
+    public void QuillSpray_IsSelfCentered_RangeZero()
+    {
+        var g = new PricklebackGoblin();
+        var quillSpray = g.Attacks.First(a => a.Name == "Quill Spray");
+
+        Assert.Equal(0, quillSpray.Range);
+        Assert.Equal(0, quillSpray.MinRange);
+    }
+
+    [Fact]
+    public void QuillSpray_HasCircularBurstShape_RadiusTwo()
+    {
+        var g = new PricklebackGoblin();
+        var quillSpray = g.Attacks.First(a => a.Name == "Quill Spray");
+        var offsets = quillSpray.AttackShape.Offsets.ToHashSet();
+
+        Assert.Contains((0, 0), offsets);
+        Assert.Contains((2, 0), offsets);
+        Assert.DoesNotContain((3, 0), offsets);
+    }
+
+    [Fact]
+    public void QuillSpray_OnlyGoblinsOwnTile_IsInRange()
+    {
+        var state = new RuinGamePDT.Encounter.EncounterState(new RuinGamePDT.World.EncounterMap(20, 20));
+        var g = new PricklebackGoblin();
+        state.Enemies.Add(g);
+        state.PlaceCreature(g, 5, 5);
+        var quillSpray = g.Attacks.First(a => a.Name == "Quill Spray");
+
+        var resolver = new RuinGamePDT.Encounter.CombatResolver(Random.Shared.Next);
+
+        Assert.True(resolver.IsInRange(g, quillSpray, (5, 5), state));
+        Assert.False(resolver.IsInRange(g, quillSpray, (6, 5), state));
+    }
+}
+```
+
+- [ ] **Step 3: Run tests to verify they fail**
+
+Run: `dotnet test --filter PricklebackGoblinTests`
+Expected: FAIL — Quill Spray still has `Range: 3` and the old single-tile shape
+
+- [ ] **Step 4: Update Quill Spray's definition**
+
+In `Scripts/Creatures/Monstrosities/Goblins/PricklebackGoblin.cs` (this file was already modified in Task 5 to add `cooldown: 3` to Quill Spray — apply this change on top of that version), replace:
+
+```csharp
+        Attacks.Add(new Attack("Quill Spray", 0, 1, 1, 100, new AttackShape(new[] { (0, 0) }), 3,
+            onHit: new AttackEffect(AttackEffectType.Bleed, [new StatChange(CombatStat.HitPoints, 5, 5)], MinDuration: 1, MaxDuration: 1),
+            cooldown: 3));
+```
+
+With:
+
+```csharp
+        Attacks.Add(new Attack("Quill Spray", 0, 1, 1, 100, AttackShape.CircularBurst(radius: 2), range: 0, minRange: 0,
+            onHit: new AttackEffect(AttackEffectType.Bleed, [new StatChange(CombatStat.HitPoints, 5, 5)], MinDuration: 1, MaxDuration: 1),
+            cooldown: 3));
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `dotnet test --filter PricklebackGoblinTests`
+Expected: all pass
+
+- [ ] **Step 6: Run full test suite**
+
+Run: `dotnet test`
+Expected: all tests pass, 0 failures. Note: this WILL require re-checking Task 6's `ChooseBestAttack_SkipsAttackOnCooldown_FallsBackToNextBest` and `TakeTurn_UsingAttackWithCooldown_StartsItsCooldown` tests from earlier in this plan, since both place a merc at `(6, 5)` (adjacent to the goblin, range 1) and rely on Quill Spray being able to reach that tile — Quill Spray's OLD range was 3 (reached it fine), but its NEW self-centered radius-2 burst reaches tile `(6,5)` from goblin position `(5,5)` only because that tile is within Euclidean distance 2 of the goblin's own position `(5,5)`... verify this directly: distance from `(5,5)` to `(6,5)` is 1, and the burst radius is 2, so `(6,5)` is within the burst centered on the goblin. This should still work, but confirm by running the tests rather than assuming — if `TakeTurn_UsingAttackWithCooldown_StartsItsCooldown`'s roll sequence assumed Quill Spray was never chosen at all (it wasn't — that test picks Skewer, the highest avg), no change is needed there regardless.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add Scripts/Creatures/Monstrosities/Goblins/PricklebackGoblin.cs Tests/CreatureTests/PricklebackGoblinTests.cs
+git commit -m "feat: Quill Spray becomes a self-centered radius-2 circular burst"
+```
+
+---
+
+## Task 9: `EnemyAI` scores AOE attacks by mercs-in-burst, not raw avg damage
+
+**Files:**
+- Modify: `Scripts/Encounter/EnemyAI.cs`
+- Modify: `Tests/EncounterTests/EnemyAITests.cs`
+
+**Interfaces:**
+- Consumes: nothing new from prior tasks in this addition — this task changes `EnemyAI`'s internal scoring only.
+
+Today, `ChooseBestAttack` scores every attack by `(MinDamage + MaxDamage) / 2f` regardless of how many mercenaries an AOE attack would actually hit. `BestTargetTile`'s AOE branch already computes a merc-hit-count (`bestCount`) internally but discards it, returning only the tile. This task threads that count back out so `ChooseBestAttack` can score AOE attacks as `avgDmg * hitCount` — a goblin surrounded by 3 mercs values a burst attack roughly 3x higher than hitting just 1, closer to its real expected value.
+
+- [ ] **Step 1: Write failing tests**
+
+Add to `Tests/EncounterTests/EnemyAITests.cs`:
+
+```csharp
+    [Fact]
+    public void ChooseBestAttack_PrefersAoeAttack_WhenItHitsMultipleMercs()
+    {
+        // Scratch avg = 2 (single-target). Quill Spray avg = 0.5, but its radius-2
+        // self-centered burst can hit multiple adjacent mercs — with 3 mercs
+        // surrounding the goblin, Quill Spray's score (0.5 * 3 = 1.5) still trails
+        // Scratch's single-target score of 2 UNLESS enough mercs surround it.
+        // Use 5 mercs clustered around the goblin so Quill Spray's score
+        // (0.5 * 5 = 2.5) exceeds Scratch's (2 * 1 = 2).
+        var state = MakeState();
+        var g = PlaceGoblin(state, 10, 10);
+
+        // Cooldown-block Skewer so it can't win the comparison outright (Skewer avg=3
+        // would otherwise dominate regardless of this test's AOE-scoring concern).
+        var skewer = g.Attacks.First(a => a.Name == "Skewer");
+        g.StartCooldown(skewer);
+
+        PlaceMerc(state, 9, 10, stamina: 100);
+        PlaceMerc(state, 11, 10, stamina: 100);
+        PlaceMerc(state, 10, 9, stamina: 100);
+        PlaceMerc(state, 10, 11, stamina: 100);
+        var m5 = PlaceMerc(state, 9, 9, stamina: 100);
+
+        Func<int, int, int> roll = (min, max) =>
+        {
+            if (min == 1 && max == 2) return 1;
+            if (min == 1 && max == 101) return 100;
+            return max - 1;
+        };
+        Ai(roll).TakeTurn(g, state);
+
+        // Quill Spray applies Bleed on hit; Scratch does not. If the goblin picked
+        // Quill Spray (correctly valuing the multi-hit burst over single-target
+        // Scratch), every surrounded merc should show a Bleed status effect.
+        Assert.NotEmpty(m5.StatusEffects);
+    }
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `dotnet test --filter ChooseBestAttack_PrefersAoeAttack_WhenItHitsMultipleMercs`
+Expected: FAIL — `ChooseBestAttack` currently scores Quill Spray at raw avg 0.5, losing to Scratch's 2 regardless of surrounding mercs. If instead the test errors out or fails for an unrelated reason (e.g. the goblin moved away from its boxed-in position via `MoveToward`, changing which mercs are within its burst radius), read the actual failure: the 5 placed mercs surround the goblin at Chebyshev distance 1 on every open side, so `MoveToward`'s reachable-tile search should find no tile that strictly improves Chebyshev distance to the nearest one (already at the minimum non-zero distance) and leave the goblin in place — if this assumption is wrong, adjust the merc placement coordinates (keeping all 5 within Euclidean distance 2 of wherever the goblin actually ends up) rather than abandoning the test's intent.
+
+- [ ] **Step 3: Thread the hit-count out of `BestTargetTile`**
+
+In `Scripts/Encounter/EnemyAI.cs`, replace:
+
+```csharp
+    private (int X, int Y)? BestTargetTile(Creature enemy, Attack attack, EncounterState state)
+    {
+        bool singleTarget = IsSingleTarget(attack);
+        var offsets = attack.AttackShape.Offsets.ToList();
+        var width = state.Map.Width;
+        var height = state.Map.Height;
+
+        if (singleTarget)
+        {
+            // Pick the in-range mercenary tile with the lowest current HP (focus-fire).
+            Creature? bestMerc = null;
+            (int X, int Y) bestTile = (0, 0);
+            float bestHp = float.MaxValue;
+
+            foreach (var m in state.Mercenaries)
+            {
+                if (!state.IsPlaced(m)) continue;
+                var mp = state.GetPosition(m);
+                if (!resolver.IsInRange(enemy, attack, mp, state)) continue;
+                if (m.CurrentHp < bestHp)
+                {
+                    bestHp = m.CurrentHp;
+                    bestMerc = m;
+                    bestTile = mp;
+                }
+            }
+            return bestMerc == null ? null : bestTile;
+        }
+
+        // AOE — pick the in-range tile whose offsets catch the most mercs.
+        (int X, int Y)? bestAoeTile = null;
+        int bestCount = 0;
+        for (int x = 0; x < width; x++)
+        for (int y = 0; y < height; y++)
+        {
+            if (!resolver.IsInRange(enemy, attack, (x, y), state)) continue;
+
+            int count = 0;
+            foreach (var (dx, dy) in offsets)
+            {
+                int tx = x + dx, ty = y + dy;
+                if (tx < 0 || tx >= width || ty < 0 || ty >= height) continue;
+                var c = state.GetCreatureAt(tx, ty);
+                if (c != null && state.Mercenaries.Contains(c)) count++;
+            }
+
+            if (count > bestCount)
+            {
+                bestCount = count;
+                bestAoeTile = (x, y);
+            }
+        }
+        return bestAoeTile;
+    }
+```
+
+With:
+
+```csharp
+    private (int X, int Y, int hitCount)? BestTargetTile(Creature enemy, Attack attack, EncounterState state)
+    {
+        bool singleTarget = IsSingleTarget(attack);
+        var offsets = attack.AttackShape.Offsets.ToList();
+        var width = state.Map.Width;
+        var height = state.Map.Height;
+
+        if (singleTarget)
+        {
+            // Pick the in-range mercenary tile with the lowest current HP (focus-fire).
+            Creature? bestMerc = null;
+            (int X, int Y) bestTile = (0, 0);
+            float bestHp = float.MaxValue;
+
+            foreach (var m in state.Mercenaries)
+            {
+                if (!state.IsPlaced(m)) continue;
+                var mp = state.GetPosition(m);
+                if (!resolver.IsInRange(enemy, attack, mp, state)) continue;
+                if (m.CurrentHp < bestHp)
+                {
+                    bestHp = m.CurrentHp;
+                    bestMerc = m;
+                    bestTile = mp;
+                }
+            }
+            return bestMerc == null ? null : (bestTile.X, bestTile.Y, 1);
+        }
+
+        // AOE — pick the in-range tile whose offsets catch the most mercs.
+        (int X, int Y)? bestAoeTile = null;
+        int bestCount = 0;
+        for (int x = 0; x < width; x++)
+        for (int y = 0; y < height; y++)
+        {
+            if (!resolver.IsInRange(enemy, attack, (x, y), state)) continue;
+
+            int count = 0;
+            foreach (var (dx, dy) in offsets)
+            {
+                int tx = x + dx, ty = y + dy;
+                if (tx < 0 || tx >= width || ty < 0 || ty >= height) continue;
+                var c = state.GetCreatureAt(tx, ty);
+                if (c != null && state.Mercenaries.Contains(c)) count++;
+            }
+
+            if (count > bestCount)
+            {
+                bestCount = count;
+                bestAoeTile = (x, y);
+            }
+        }
+        return bestAoeTile == null ? null : (bestAoeTile.Value.X, bestAoeTile.Value.Y, bestCount);
+    }
+```
+
+- [ ] **Step 4: Update `ChooseBestAttack` to score by `avgDmg * hitCount`**
+
+In `Scripts/Encounter/EnemyAI.cs`, replace:
+
+```csharp
+    private (Attack attack, (int X, int Y) targetTile)? ChooseBestAttack(Creature enemy, EncounterState state)
+    {
+        (Attack attack, (int X, int Y) tile, float avgDmg)? best = null;
+
+        foreach (var attack in enemy.Attacks)
+        {
+            if (enemy.IsOnCooldown(attack)) continue;
+            if (state.GetRemainingActionPoints(enemy) < attack.ActionPointCost) continue;
+
+            var tile = BestTargetTile(enemy, attack, state);
+            if (tile == null) continue;
+
+            float avg = (attack.MinDamage + attack.MaxDamage) / 2f;
+            if (best == null || avg > best.Value.avgDmg)
+                best = (attack, tile.Value, avg);
+        }
+
+        return best == null ? null : (best.Value.attack, best.Value.tile);
+    }
+```
+
+With:
+
+```csharp
+    private (Attack attack, (int X, int Y) targetTile)? ChooseBestAttack(Creature enemy, EncounterState state)
+    {
+        (Attack attack, (int X, int Y) tile, float score)? best = null;
+
+        foreach (var attack in enemy.Attacks)
+        {
+            if (enemy.IsOnCooldown(attack)) continue;
+            if (state.GetRemainingActionPoints(enemy) < attack.ActionPointCost) continue;
+
+            var pick = BestTargetTile(enemy, attack, state);
+            if (pick == null) continue;
+
+            float avg = (attack.MinDamage + attack.MaxDamage) / 2f;
+            float score = avg * pick.Value.hitCount;
+            if (best == null || score > best.Value.score)
+                best = (attack, (pick.Value.X, pick.Value.Y), score);
+        }
+
+        return best == null ? null : (best.Value.attack, best.Value.tile);
+    }
+```
+
+- [ ] **Step 5: Run all `EnemyAITests` to verify they pass**
+
+Run: `dotnet test --filter EnemyAITests`
+Expected: all pass, including `ChooseBestAttack_PrefersAoeAttack_WhenItHitsMultipleMercs` and every test from Task 6 (their assertions are unaffected by this scoring change in single-merc scenarios, since `hitCount` is always 1 there — `avg * 1 == avg`, identical to the old scoring)
+
+- [ ] **Step 6: Run full test suite**
+
+Run: `dotnet test`
+Expected: all tests pass, 0 failures
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add Scripts/Encounter/EnemyAI.cs Tests/EncounterTests/EnemyAITests.cs
+git commit -m "feat: EnemyAI scores AOE attacks by mercs-in-burst instead of raw avg damage"
+```
+
+---
+
 ## Self-Review Notes
 
-- **Spec coverage:** `Attack.Cooldown` default-0 (Task 1) — `Creature.MaxAttacksPerTurn` default-1, cooldown tracking methods (Task 2) — cooldown starts uniformly via `CombatResolver.Resolve` (Task 3) — cooldown ticks per-creature-turn via `TurnManager` (Task 4) — Skewer=1, Quill Spray=3 (Task 5) — `EnemyAI` fallback past cooldown-blocked attacks and per-turn attack cap (Task 6). All spec requirements have a task.
-- **Placeholder scan:** none — Task 4's tests use a single-creature encounter specifically so the tick count is deterministic (`StartEncounter()` calls `AdvanceToNextTurn()` exactly once; with one creature it's unconditionally `CurrentCreature`), avoiding the need for the `if (tm.CurrentCreature == ...)` guard other multi-creature tests in the same file require due to randomized turn-order tiebreaking.
-- **Type consistency:** `Creature.IsOnCooldown(Attack)`, `StartCooldown(Attack)`, `TickCooldowns()` signatures are used identically in Task 3 (`CombatResolver`) and Task 6 (`EnemyAI`) as defined in Task 2. `MaxAttacksPerTurn` is `int` throughout.
-- **Existing test updates are load-bearing, not optional:** Task 6 explicitly rewrites `TakeTurn_ChainsAttacksUntilAPExhausted` and fixes stale comments in 2 other tests — skipping this would leave the test suite red after Task 6's behavior change, which is why it's called out as "required, not a regression to avoid" in the task's own interface section.
+- **Spec coverage:** `Attack.Cooldown` default-0 (Task 1) — `Creature.MaxAttacksPerTurn` default-1, cooldown tracking methods (Task 2) — cooldown starts uniformly via `CombatResolver.Resolve` (Task 3) — cooldown ticks per-creature-turn via `TurnManager` (Task 4) — Skewer=1, Quill Spray=3 (Task 5) — `EnemyAI` fallback past cooldown-blocked attacks and per-turn attack cap (Task 6) — shared circular burst shape, Shout switched to it (Task 7) — Quill Spray becomes a self-centered radius-2 circular burst (Task 8) — `EnemyAI` scores AOE attacks by mercs-hit instead of raw avg damage (Task 9). All requirements from both the original spec and the follow-up scope (AOE shape + scoring) have a task.
+- **Placeholder scan:** none — Task 4's tests use a single-creature encounter specifically so the tick count is deterministic (`StartEncounter()` calls `AdvanceToNextTurn()` exactly once; with one creature it's unconditionally `CurrentCreature`), avoiding the need for the `if (tm.CurrentCreature == ...)` guard other multi-creature tests in the same file require due to randomized turn-order tiebreaking. Task 8's Step 1 asks the implementer to check for an existing goblin test file before creating one — this is a real, necessary check (the codebase's actual state at implementation time isn't independently known by this plan), not a vague placeholder; the test content itself is fully specified either way.
+- **Type consistency:** `Creature.IsOnCooldown(Attack)`, `StartCooldown(Attack)`, `TickCooldowns()` signatures are used identically in Task 3 (`CombatResolver`) and Task 6 (`EnemyAI`) as defined in Task 2. `MaxAttacksPerTurn` is `int` throughout. `AttackShape.CircularBurst(int radius) : AttackShape` (Task 7) is consumed identically by `Unarmed.Shout` (Task 7) and `PricklebackGoblin`'s Quill Spray (Task 8). `BestTargetTile`'s return type changes from `(int X, int Y)?` to `(int X, int Y, int hitCount)?` in Task 9 — this is a private method with exactly one call site (`ChooseBestAttack`, updated in the same task), so the signature change is self-contained within Task 9 and doesn't leak into any other task's code.
+- **Task ordering:** Task 8 modifies `PricklebackGoblin.cs`'s Quill Spray line, which Task 5 already touched (to add `cooldown: 3`) — Task 8's Step 4 explicitly shows the "replace this" snippet starting from Task 5's already-cooldown-bearing version, not the original pre-Task-5 line, so applying tasks in order (5 before 8) produces the correct final file.
+- **Existing test updates are load-bearing, not optional:** Task 6 explicitly rewrites `TakeTurn_ChainsAttacksUntilAPExhausted` and fixes stale comments in 2 other tests — skipping this would leave the test suite red after Task 6's behavior change. Task 7 replaces `Shout_HasDiamondBurstShape_ManhattanDistanceFour` outright since the diamond shape no longer exists after that task. Both are called out as required, not incidental, in their respective task sections.
