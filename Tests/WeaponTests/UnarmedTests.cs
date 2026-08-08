@@ -73,11 +73,8 @@ public class UnarmedTests
         // Just past distance 4 on the diagonal: sqrt(3²+3²) ≈ 4.24 > 4.
         Assert.DoesNotContain((3, 3), offsets);
 
-        // A Manhattan-diamond tile that would have been included under the OLD
-        // shape (|3|+|2|=5, outside Manhattan-4) but is now excluded on distance
-        // grounds too: sqrt(3²+2²) ≈ 3.6 <= 4, so it's actually INCLUDED under
-        // Euclidean distance — the circle is rounder/wider on axes than the
-        // diamond, not strictly smaller. Assert inclusion instead:
+        // sqrt(3²+2²) ≈ 3.6 <= 4 — included under Euclidean, though it was
+        // outside the old Manhattan-4 diamond.
         Assert.Contains((3, 2), offsets);
 
         // Straight past the radius on an axis is still excluded either way.

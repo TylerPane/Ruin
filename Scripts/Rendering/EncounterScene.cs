@@ -338,8 +338,6 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
     {
         var result = new HashSet<(int X, int Y)>();
 
-        // TODO(distance): switch from Chebyshev to Euclidean for circular range
-        // (paired with CombatResolver.IsInRange).
         for (int x = 0; x < state.Map.Width; x++)
         for (int y = 0; y < state.Map.Height; y++)
         {

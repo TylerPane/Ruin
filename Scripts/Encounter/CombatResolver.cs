@@ -86,15 +86,11 @@ public class CombatResolver(Func<int, int, int> roll)
         }
     }
 
-    // TODO(distance): switch to Euclidean (sqrt(dx² + dy²)) for circular range
-    // shape. Currently square shape — matches the v1 spec's
-    // explicit placeholder; replace alongside the EncounterScene targeting
-    // overlay's distance calculation.
     public bool IsInRange(Creature attacker, Attack attack, (int X, int Y) targetTile, EncounterState state)
     {
         if (!state.IsPlaced(attacker)) return false;
         var pos = state.GetPosition(attacker);
-        int distance = Math.Max(Math.Abs(targetTile.X - pos.X), Math.Abs(targetTile.Y - pos.Y));
+        double distance = Math.Sqrt(Math.Pow(targetTile.X - pos.X, 2) + Math.Pow(targetTile.Y - pos.Y, 2));
         return distance >= attack.MinRange && distance <= attack.Range;
     }
 }

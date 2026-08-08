@@ -243,12 +243,12 @@ public class EnemyAITests
     [Fact]
     public void ChooseBestAttack_PrefersAoeAttack_WhenItHitsMultipleMercs()
     {
-        // Scratch avg = 2 (single-target). Quill Spray avg = 0.5, but its radius-2
-        // self-centered burst can hit multiple adjacent mercs — with 3 mercs
-        // surrounding the goblin, Quill Spray's score (0.5 * 3 = 1.5) still trails
-        // Scratch's single-target score of 2 UNLESS enough mercs surround it.
-        // Use 5 mercs clustered around the goblin so Quill Spray's score
-        // (0.5 * 5 = 2.5) exceeds Scratch's (2 * 1 = 2).
+        // Scratch avg = 2 (single-target, score = 2). Quill Spray avg = 0.5 but its
+        // radius-2 self-centered burst can hit multiple adjacent mercs. With 5 mercs
+        // clustered around the goblin, Quill Spray's score (0.5 * 5 = 2.5) exceeds
+        // Scratch's (2 * 1 = 2), so the goblin should prefer the AOE attack.
+        // Skewer (avg=3) is cooldown-blocked so it can't win the comparison outright
+        // and mask the AOE-scoring behavior under test.
         var state = MakeState();
         var g = PlaceGoblin(state, 10, 10);
 
@@ -257,10 +257,10 @@ public class EnemyAITests
         var skewer = g.Attacks.First(a => a.Name == "Skewer");
         g.StartCooldown(skewer);
 
-        PlaceMerc(state, 9, 10, stamina: 100);
-        PlaceMerc(state, 11, 10, stamina: 100);
-        PlaceMerc(state, 10, 9, stamina: 100);
-        PlaceMerc(state, 10, 11, stamina: 100);
+        var m1 = PlaceMerc(state, 9, 10, stamina: 100);
+        var m2 = PlaceMerc(state, 11, 10, stamina: 100);
+        var m3 = PlaceMerc(state, 10, 9, stamina: 100);
+        var m4 = PlaceMerc(state, 10, 11, stamina: 100);
         var m5 = PlaceMerc(state, 9, 9, stamina: 100);
 
         Func<int, int, int> roll = (min, max) =>
@@ -273,7 +273,12 @@ public class EnemyAITests
 
         // Quill Spray applies Bleed on hit; Scratch does not. If the goblin picked
         // Quill Spray (correctly valuing the multi-hit burst over single-target
-        // Scratch), every surrounded merc should show a Bleed status effect.
+        // Scratch), every surrounded merc should show a Bleed status effect —
+        // pinning the burst's actual coverage across all 5 placed mercs.
+        Assert.NotEmpty(m1.StatusEffects);
+        Assert.NotEmpty(m2.StatusEffects);
+        Assert.NotEmpty(m3.StatusEffects);
+        Assert.NotEmpty(m4.StatusEffects);
         Assert.NotEmpty(m5.StatusEffects);
     }
 }

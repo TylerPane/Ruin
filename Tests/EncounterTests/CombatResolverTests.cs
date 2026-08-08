@@ -288,7 +288,7 @@ public class CombatResolverTests
         var resolver = new CombatResolver(Rolls());
 
         Assert.True(resolver.IsInRange(attacker, attack, (5, 0), state));
-        Assert.True(resolver.IsInRange(attacker, attack, (5, 5), state));   // Chebyshev: max(5,5)=5
+        Assert.False(resolver.IsInRange(attacker, attack, (5, 5), state));  // Euclidean: sqrt(5²+5²)≈7.07 > 5
         Assert.False(resolver.IsInRange(attacker, attack, (6, 0), state));
         Assert.False(resolver.IsInRange(attacker, attack, (6, 6), state));
     }
