@@ -49,6 +49,7 @@ public class PricklebackGoblinTests
         Assert.Equal(5, a.OnHit.Stats[0].MaxAmount);
         Assert.Equal(1, a.OnHit.MinDuration);
         Assert.Equal(3, a.OnHit.MaxDuration);
+        Assert.Equal(25, a.OnHit.Chance);
     }
 
     [Fact]
@@ -66,6 +67,7 @@ public class PricklebackGoblinTests
         Assert.Equal(5, a.OnHit.Stats[0].MaxAmount);
         Assert.Equal(1, a.OnHit.MinDuration);
         Assert.Equal(1, a.OnHit.MaxDuration);
+        Assert.Equal(25, a.OnHit.Chance);
     }
 
     [Fact]

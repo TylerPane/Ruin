@@ -1,12 +1,16 @@
 namespace RuinGamePDT.World;
 
-public class WorldData(int width, int height)
+public class WorldData(int minX, int minY, int maxX, int maxY)
 {
-    public int Width { get; } = width;
-    public int Height { get; } = height;
+    private readonly Dictionary<(int X, int Y), WorldTile> _tiles = new();
 
-    private readonly WorldTile?[,] _tiles = new WorldTile[width, height];
+    public int MinX { get; } = minX;
+    public int MinY { get; } = minY;
+    public int MaxX { get; } = maxX;
+    public int MaxY { get; } = maxY;
 
-    public void SetTile(int x, int y, WorldTile tile) => _tiles[x, y] = tile;
-    public WorldTile? GetTile(int x, int y) => _tiles[x, y];
+    public bool InBounds(int x, int y) => x >= MinX && x <= MaxX && y >= MinY && y <= MaxY;
+
+    public void SetTile(int x, int y, WorldTile tile) => _tiles[(x, y)] = tile;
+    public WorldTile? GetTile(int x, int y) => _tiles.GetValueOrDefault((x, y));
 }

@@ -37,15 +37,20 @@ public class WorldGenerationTests(ITestOutputHelper output)
         var generator = new WorldGenerator();
         WorldData world = generator.GenerateWorld(width, height, seed);
 
+        // GenerateWorld centers the generated patch on (0,0), so the tiles it
+        // produced span [-offset, width - offset) in each axis.
+        int offsetX = width / 2;
+        int offsetY = height / 2;
+
         output.WriteLine($"World Map ({width}x{height}, seed: {seed})");
         output.WriteLine("Legend: ^ Mountains  . Desert  ~ Swamp  T Forest  - Plains");
         output.WriteLine(new string('-', width + 2));
 
-        for (int y = 0; y < height; y++)
+        for (int y = -offsetY; y < height - offsetY; y++)
         {
             var row = new char[width];
-            for (int x = 0; x < width; x++)
-                row[x] = BiomeChar(world.GetTile(x, y)!.Biome);
+            for (int x = -offsetX; x < width - offsetX; x++)
+                row[x + offsetX] = BiomeChar(world.GetTile(x, y)!.Biome);
             output.WriteLine("|" + new string(row) + "|");
         }
 
@@ -55,8 +60,8 @@ public class WorldGenerationTests(ITestOutputHelper output)
         foreach (BiomeType b in Enum.GetValues<BiomeType>())
             biomeCounts[b] = 0;
 
-        for (int x = 0; x < width; x++)
-            for (int y = 0; y < height; y++)
+        for (int x = -offsetX; x < width - offsetX; x++)
+            for (int y = -offsetY; y < height - offsetY; y++)
                 biomeCounts[world.GetTile(x, y)!.Biome]++;
 
         int total = width * height;
@@ -76,6 +81,9 @@ public class WorldGenerationTests(ITestOutputHelper output)
 
         var generator = new WorldGenerator();
         WorldData world = generator.GenerateWorld(width, height, seed);
+
+        int offsetX = width / 2;
+        int offsetY = height / 2;
 
         var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../.."));
         var outputDir = Path.Combine(repoRoot, "TestOutput");
@@ -120,9 +128,9 @@ public class WorldGenerationTests(ITestOutputHelper output)
         html.AppendLine("</div>");
         html.AppendLine("<pre>");
 
-        for (int y = 0; y < height; y++)
+        for (int y = -offsetY; y < height - offsetY; y++)
         {
-            for (int x = 0; x < width; x++)
+            for (int x = -offsetX; x < width - offsetX; x++)
             {
                 var tile = world.GetTile(x, y)!;
                 biomeCounts[tile.Biome]++;

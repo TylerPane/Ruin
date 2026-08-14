@@ -49,18 +49,19 @@ public class CombatResolver(Func<int, int, int> roll)
                 defender.CurrentHp -= dmg;
 
                 var effects = new List<string>();
-                if (attack.OnHit != null)
+                if (attack.OnHit != null && roll(1, 101) <= attack.OnHit.Chance)
                 {
                     defender.ApplyStatusEffect(attack.OnHit);
                     effects.AddRange(DescribeEffect(attack.OnHit));
                 }
-                if (isCrit && attack.OnCrit != null)
+                if (isCrit && attack.OnCrit != null && roll(1, 101) <= attack.OnCrit.Chance)
                 {
                     defender.ApplyStatusEffect(attack.OnCrit);
                     effects.AddRange(DescribeEffect(attack.OnCrit));
                 }
 
-                entries.Add(new CombatLogEntry(attacker.Name, attack.Name, defender.Name, WasHit: true, Damage: dmg, EffectsApplied: effects));
+                entries.Add(new CombatLogEntry(attacker.Name, attack.Name, defender.Name, WasHit: true, Damage: dmg, EffectsApplied: effects,
+                    TargetCurrentHp: defender.CurrentHp, TargetMaxHp: defender.CombatStats.HitPoints));
 
                 if (defender.CurrentHp <= 0)
                 {
@@ -91,6 +92,9 @@ public class CombatResolver(Func<int, int, int> roll)
         if (!state.IsPlaced(attacker)) return false;
         var pos = state.GetPosition(attacker);
         double distance = Math.Sqrt(Math.Pow(targetTile.X - pos.X, 2) + Math.Pow(targetTile.Y - pos.Y, 2));
-        return distance >= attack.MinRange && distance <= attack.Range;
+        // Epsilon absorbs grid-diagonal rounding (e.g. adjacent diagonal ≈1.41)
+        // so an integer range still reaches every tile within that many steps.
+        const double epsilon = 0.5;
+        return distance >= attack.MinRange - epsilon && distance <= attack.Range + epsilon;
     }
 }

@@ -37,15 +37,20 @@ public class WorldGenerator
         BiomeType[,] biomeMap = _biomeMapper.MapBiomes(heatMap, elevationMap, moistureMap);
 
         Console.WriteLine("Creating tile data...");
-        WorldData world = new WorldData(width, height);
+
+        int offsetX = width / 2;
+        int offsetY = height / 2;
+        WorldData world = new WorldData(-offsetX, -offsetY, width - offsetX - 1, height - offsetY - 1);
 
         for (int x = 0; x < width; x++)
         {
             for (int y = 0; y < height; y++)
             {
                 BiomeType biome = biomeMap[x, y];
-                WorldTile tile = new WorldTile(x, y, biome);
-                world.SetTile(x, y, tile);
+                int worldX = x - offsetX;
+                int worldY = y - offsetY;
+                WorldTile tile = new WorldTile(worldX, worldY, biome);
+                world.SetTile(worldX, worldY, tile);
             }
         }
 

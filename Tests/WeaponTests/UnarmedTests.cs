@@ -47,7 +47,8 @@ public class UnarmedTests
         Assert.Equal(0, a.MinDamage);
         Assert.Equal(0, a.MaxDamage);
         Assert.Equal(1, a.ActionPointCost);
-        Assert.Equal(4, a.Range);
+        Assert.Equal(0, a.Range);
+        Assert.Equal(0, a.MinRange);
         Assert.Null(a.OnCrit);
         Assert.Null(a.Reaction);
     }

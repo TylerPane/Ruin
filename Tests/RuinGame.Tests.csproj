@@ -27,6 +27,8 @@
     <Compile Remove="..\Scripts\Rendering\**\*.cs" />
     <Compile Include="..\Scripts\Rendering\CombatLog.cs" />
     <Compile Include="..\Scripts\Rendering\EnemyInspectWindow.cs" />
+    <Compile Include="..\Scripts\Rendering\PartyWindow.cs" />
+    <Compile Include="..\Scripts\Rendering\StartScreen.cs" />
   </ItemGroup>
 
 </Project>

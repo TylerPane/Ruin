@@ -16,26 +16,26 @@ public class CombatLog
     {
         foreach (var entry in entries)
         {
-            _lines.Add(FormatOutcomeLine(entry.AttackerName, entry.AttackName, entry.TargetName, entry.WasHit, entry.Damage));
+            _lines.Add(FormatOutcomeLine(entry.AttackerName, entry.AttackName, entry.TargetName, entry.WasHit, entry.Damage, entry.TargetCurrentHp, entry.TargetMaxHp));
             foreach (var effect in entry.EffectsApplied)
                 _lines.Add($"{entry.TargetName}: {effect} applied");
         }
     }
 
-    public void AddSelfCastEntry(string casterName, string skillName, IEnumerable<string> effects)
+    public void AddSelfCastEntry(string casterName, string skillName, IEnumerable<string> effects, int casterCurrentHp = 0, int casterMaxHp = 0)
     {
-        _lines.Add(FormatOutcomeLine(casterName, skillName, casterName, wasHit: true, damage: 0));
+        _lines.Add(FormatOutcomeLine(casterName, skillName, casterName, wasHit: true, damage: 0, targetCurrentHp: casterCurrentHp, targetMaxHp: casterMaxHp));
         foreach (var effect in effects)
             _lines.Add($"{casterName}: {effect} applied");
     }
 
-    private static string FormatOutcomeLine(string attacker, string action, string target, bool wasHit, int damage)
+    private static string FormatOutcomeLine(string attacker, string action, string target, bool wasHit, int damage, int targetCurrentHp, int targetMaxHp)
     {
         if (!wasHit)
             return $"{attacker} uses {action} on {target} — MISS";
         if (damage < 0)
-            return $"{attacker} uses {action} on {target} — HEAL, {-damage} hp";
-        return $"{attacker} uses {action} on {target} — HIT, {damage} dmg";
+            return $"{attacker} uses {action} on {target} — HEAL, {-damage} hp {target} Hp {targetCurrentHp}/{targetMaxHp}";
+        return $"{attacker} uses {action} on {target} — HIT, {damage} dmg {target} Hp {targetCurrentHp}/{targetMaxHp}";
     }
 
     public void HandleScroll(int scrollDelta)

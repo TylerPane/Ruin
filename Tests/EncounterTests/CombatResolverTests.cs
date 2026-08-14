@@ -243,10 +243,40 @@ public class CombatResolverTests
             MinDuration: 1, MaxDuration: 1);
         var attack = BasicAttack(minDmg: 1, maxDmg: 1, accuracy: 100, onHit: onHit);
 
-        new CombatResolver(Rolls(1, 100, 0, 1)).Resolve(attacker, attack, (1, 0), state);
+        new CombatResolver(Rolls(1, 100, 0, 1, 1)).Resolve(attacker, attack, (1, 0), state);
 
         Assert.Single(defender.StatusEffects);
         Assert.Equal(StatusEffectType.Bleed, defender.StatusEffects[0].Type);
+    }
+
+    [Fact]
+    public void OnHitShould_NotFire_WhenChanceRollFails()
+    {
+        var (state, attacker, defender) = MakeFight();
+        var onHit = new AttackEffect(AttackEffectType.Bleed,
+            new[] { new StatChange(CombatStat.HitPoints, 2, 2) },
+            MinDuration: 1, MaxDuration: 1, Chance: 25);
+        var attack = BasicAttack(minDmg: 1, maxDmg: 1, accuracy: 100, onHit: onHit);
+
+        // hitCount=1, hit=100, crit=0, dmg=1, procRoll=26 (fails 25% chance)
+        new CombatResolver(Rolls(1, 100, 0, 1, 26)).Resolve(attacker, attack, (1, 0), state);
+
+        Assert.Empty(defender.StatusEffects);
+    }
+
+    [Fact]
+    public void OnHitShould_Fire_WhenChanceRollSucceeds()
+    {
+        var (state, attacker, defender) = MakeFight();
+        var onHit = new AttackEffect(AttackEffectType.Bleed,
+            new[] { new StatChange(CombatStat.HitPoints, 2, 2) },
+            MinDuration: 1, MaxDuration: 1, Chance: 25);
+        var attack = BasicAttack(minDmg: 1, maxDmg: 1, accuracy: 100, onHit: onHit);
+
+        // hitCount=1, hit=100, crit=0, dmg=1, procRoll=25 (succeeds, roll<=chance)
+        new CombatResolver(Rolls(1, 100, 0, 1, 25)).Resolve(attacker, attack, (1, 0), state);
+
+        Assert.Single(defender.StatusEffects);
     }
 
     [Fact]
@@ -262,8 +292,8 @@ public class CombatResolverTests
         new CombatResolver(Rolls(1, 100, 74, 1)).Resolve(attacker, attack, (1, 0), state);
         Assert.Empty(defender.StatusEffects);
 
-        // Second: crit (75 >= 75)
-        new CombatResolver(Rolls(1, 100, 75, 1)).Resolve(attacker, attack, (1, 0), state);
+        // Second: crit (75 >= 75), then onCrit proc roll = 1 (succeeds)
+        new CombatResolver(Rolls(1, 100, 75, 1, 1)).Resolve(attacker, attack, (1, 0), state);
         Assert.Single(defender.StatusEffects);
     }
 
@@ -291,6 +321,21 @@ public class CombatResolverTests
         Assert.False(resolver.IsInRange(attacker, attack, (5, 5), state));  // Euclidean: sqrt(5²+5²)≈7.07 > 5
         Assert.False(resolver.IsInRange(attacker, attack, (6, 0), state));
         Assert.False(resolver.IsInRange(attacker, attack, (6, 6), state));
+    }
+
+    [Fact]
+    public void SkillShould_IncludeDiagonalAdjacency_AtRangeOne()
+    {
+        // Melee range:1 must still reach true diagonal-adjacent tiles
+        // (dist sqrt(2)≈1.41), not just cardinal-adjacent (dist 1).
+        var (state, attacker, _) = MakeFight();
+        var attack = new Attack("Melee", 1, 1, 1, 100, new AttackShape(new[] { (0, 0) }), range: 1);
+        var resolver = new CombatResolver(Rolls());
+
+        Assert.True(resolver.IsInRange(attacker, attack, (1, 0), state));  // cardinal
+        Assert.True(resolver.IsInRange(attacker, attack, (1, 1), state));  // diagonal
+        Assert.False(resolver.IsInRange(attacker, attack, (2, 0), state)); // out of range
+        Assert.False(resolver.IsInRange(attacker, attack, (2, 2), state)); // out of range
     }
 
     [Fact]
@@ -326,8 +371,8 @@ public class CombatResolverTests
             MinDuration: 3, MaxDuration: 3);
         var attack = BasicAttack(minDmg: 0, maxDmg: 0, accuracy: 100, onHit: onHit);
 
-        // rolls: hitCount=1, hit=1 (would miss normally, but isBuff skips the check), crit=0, dmg=0
-        new CombatResolver(Rolls(1, 1, 0, 0)).Resolve(attacker, attack, (1, 0), state);
+        // rolls: hitCount=1, hit=1 (would miss normally, but isBuff skips the check), crit=0, dmg=0, procRoll=1
+        new CombatResolver(Rolls(1, 1, 0, 0, 1)).Resolve(attacker, attack, (1, 0), state);
 
         Assert.Single(ally.StatusEffects);
         Assert.Equal(StatusEffectType.StatIncrease, ally.StatusEffects[0].Type);
@@ -473,7 +518,7 @@ public class CombatResolverTests
             MinDuration: 1, MaxDuration: 1);
         var attack = BasicAttack(minDmg: 1, maxDmg: 1, accuracy: 100, onHit: onHit);
 
-        var entries = new CombatResolver(Rolls(1, 100, 0, 1)).Resolve(attacker, attack, (1, 0), state);
+        var entries = new CombatResolver(Rolls(1, 100, 0, 1, 1)).Resolve(attacker, attack, (1, 0), state);
 
         Assert.Single(entries);
         Assert.Single(entries[0].EffectsApplied);

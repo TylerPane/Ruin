@@ -160,10 +160,17 @@ public class EnemyAITests
         var g = PlaceGoblin(state, 5, 5);
         var m = PlaceMerc(state, 6, 5, stamina: 100); // survive the hit
 
+        int oneToHundredOneCalls = 0;
         Func<int, int, int> roll = (min, max) =>
         {
             if (min == 1 && max == 2) return 1;     // hit count
-            if (min == 1 && max == 101) return 100; // hit, then crit (both rolls 100)
+            if (min == 1 && max == 101)
+            {
+                oneToHundredOneCalls++;
+                // 1st call: hit roll (need >= threshold, use 100). 2nd: crit roll (100, doesn't matter).
+                // 3rd: OnHit proc roll (need <= 25, use 1).
+                return oneToHundredOneCalls == 3 ? 1 : 100;
+            }
             return max - 1;                          // damage = max - 1 (top of range)
         };
 
@@ -263,10 +270,16 @@ public class EnemyAITests
         var m4 = PlaceMerc(state, 10, 11, stamina: 100);
         var m5 = PlaceMerc(state, 9, 9, stamina: 100);
 
+        int oneToHundredOneCalls = 0;
         Func<int, int, int> roll = (min, max) =>
         {
             if (min == 1 && max == 2) return 1;
-            if (min == 1 && max == 101) return 100;
+            if (min == 1 && max == 101)
+            {
+                oneToHundredOneCalls++;
+                // Cycle of 3 per hit: hit roll (100), crit roll (100), OnHit proc roll (1, succeeds).
+                return oneToHundredOneCalls % 3 == 0 ? 1 : 100;
+            }
             return max - 1;
         };
         Ai(roll).TakeTurn(g, state);

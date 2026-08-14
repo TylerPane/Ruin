@@ -4,8 +4,10 @@ using Microsoft.Xna.Framework.Input;
 using RuinGamePDT.Creatures;
 using RuinGamePDT.Encounter;
 using RuinGamePDT.Generation;
+using RuinGamePDT.Party;
 using RuinGamePDT.Rendering;
 using RuinGamePDT.Resources;
+using RuinGamePDT.World;
 
 namespace RuinGamePDT;
 
@@ -21,6 +23,16 @@ public class Game1 : Game
     private Dictionary<string, Texture2D> _skillIcons = null!;
     private SpriteFont _logFont = null!;
     private EncounterResult _encounterResult = EncounterResult.Ongoing;
+
+    private WorldData _world = null!;
+    private Banner _banner = null!;
+    private OverworldScene _overworldScene = null!;
+    private PartyWindow _partyWindow = null!;
+    private StartScreen _startScreen = null!;
+    private KeyboardState _prevKeyboard;
+
+    private enum SceneMode { StartScreen, Overworld, Encounter }
+    private SceneMode _sceneMode = SceneMode.StartScreen;
 
     public Game1()
     {
@@ -81,12 +93,58 @@ public class Game1 : Game
         var resolver = new CombatResolver(Random.Shared.Next);
         _scene = new EncounterScene(_encounterState, _turnManager, _pixel, resolver, _skillIcons, _logFont);
         _ai = new EnemyAI(resolver);
+
+        _partyWindow = new PartyWindow();
+        _startScreen = new StartScreen();
+    }
+
+    private void StartOverworld(WorldSize size)
+    {
+        _world = new WorldGenerator().GenerateWorld((int)size, (int)size, seed: 42);
+        _banner = new Banner();
+        _banner.AddMercenary(Mercenary.CreateRandom());
+        _banner.AddMercenary(Mercenary.CreateRandom());
+        OverworldMovement.ScoutAround(_banner, _world);
+        _overworldScene = new OverworldScene(_world, _banner, _pixel);
+        _sceneMode = SceneMode.Overworld;
     }
 
     protected override void Update(GameTime gameTime)
     {
+        var kb = Keyboard.GetState();
+
+        if (_sceneMode == SceneMode.StartScreen)
+        {
+            _startScreen.Update(Mouse.GetState(), kb, GraphicsDevice.Viewport.Width, GraphicsDevice.Viewport.Height);
+            if (_startScreen.Confirmed)
+                StartOverworld(_startScreen.Selected);
+            _prevKeyboard = kb;
+            base.Update(gameTime);
+            return;
+        }
+
+        if (JustPressed(kb, Keys.P))
+            _partyWindow.Toggle();
+        if (_partyWindow.IsOpen)
+        {
+            if (JustPressed(kb, Keys.Escape))
+                _partyWindow.Close();
+            _prevKeyboard = kb;
+            base.Update(gameTime);
+            return;
+        }
+
+        if (_sceneMode == SceneMode.Overworld)
+        {
+            _overworldScene.Update(Mouse.GetState(), kb, GraphicsDevice.Viewport.Width, GraphicsDevice.Viewport.Height);
+            _prevKeyboard = kb;
+            base.Update(gameTime);
+            return;
+        }
+
         if (_encounterResult != EncounterResult.Ongoing)
         {
+            _prevKeyboard = kb;
             base.Update(gameTime);
             return;
         }
@@ -103,16 +161,34 @@ public class Game1 : Game
 
         _encounterResult = _turnManager.CheckEndCondition();
 
+        _prevKeyboard = kb;
         base.Update(gameTime);
     }
+
+    private bool JustPressed(KeyboardState kb, Keys k) => kb.IsKeyDown(k) && !_prevKeyboard.IsKeyDown(k);
 
     protected override void Draw(GameTime gameTime)
     {
         GraphicsDevice.Clear(Color.Black);
         _spriteBatch.Begin();
-        _scene.Draw(_spriteBatch);
-        if (_encounterResult != EncounterResult.Ongoing)
-            DrawEndMessage(_spriteBatch);
+
+        if (_sceneMode == SceneMode.StartScreen)
+        {
+            _startScreen.Draw(_spriteBatch, _pixel, _logFont, GraphicsDevice.Viewport.Width, GraphicsDevice.Viewport.Height);
+        }
+        else if (_sceneMode == SceneMode.Overworld)
+        {
+            _overworldScene.Draw(_spriteBatch);
+            _partyWindow.Draw(_spriteBatch, _pixel, _logFont, _banner, GraphicsDevice.Viewport.Width, GraphicsDevice.Viewport.Height);
+        }
+        else
+        {
+            _scene.Draw(_spriteBatch);
+            if (_encounterResult != EncounterResult.Ongoing)
+                DrawEndMessage(_spriteBatch);
+            _partyWindow.Draw(_spriteBatch, _pixel, _logFont, _banner, GraphicsDevice.Viewport.Width, GraphicsDevice.Viewport.Height);
+        }
+
         _spriteBatch.End();
         base.Draw(gameTime);
     }

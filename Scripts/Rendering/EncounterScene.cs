@@ -197,7 +197,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
                     state.AddMovement(skillUser, Random.Shared.Next(s.MinAmount, s.MaxAmount + 1));
                     effectDescriptions.Add($"{s.Stat} +");
                 }
-                _combatLog.AddSelfCastEntry(skillUser.Name, rush.Name, effectDescriptions);
+                _combatLog.AddSelfCastEntry(skillUser.Name, rush.Name, effectDescriptions, skillUser.CurrentHp, skillUser.CombatStats.HitPoints);
                 EnterMovementMode();
                 break;
 

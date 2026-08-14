@@ -6,5 +6,7 @@ public record CombatLogEntry(
     string TargetName,
     bool WasHit,
     int Damage,
-    IReadOnlyList<string> EffectsApplied
+    IReadOnlyList<string> EffectsApplied,
+    int TargetCurrentHp = 0,
+    int TargetMaxHp = 0
 );

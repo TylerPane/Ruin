@@ -35,10 +35,11 @@ public class Unarmed : Weapon
             actionPointCost: 1,
             accuracy: 100,
             attackShape: AttackShape.CircularBurst(radius: 4),
-            range: 4,
+            range: 0,
             reaction: null,
             onHit: new AttackEffect(AttackEffectType.StatIncrease, [new StatChange(CombatStat.PhysicalDefense, 2, 2)], MinDuration: 3, MaxDuration: 3),
-            onCrit: null
+            onCrit: null,
+            minRange: 0
         ));
     }
 }
