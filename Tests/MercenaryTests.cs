@@ -1,5 +1,6 @@
 using RuinGamePDT.Combat;
 using RuinGamePDT.Creatures;
+using RuinGamePDT.Party;
 using RuinGamePDT.Weapons;
 using static RuinGamePDT.Creatures.BaseStat;
 
@@ -7,6 +8,71 @@ namespace RuinGamePDT.Tests;
 
 public class MercenaryTests
 {
+    [Fact]
+    public void EquipWeapon_ReplacesEquippedWeapon()
+    {
+        var m = new Mercenary();
+        var sword = new Sword();
+
+        m.EquipWeapon(sword, new Banner());
+
+        Assert.Same(sword, m.EquippedWeapon);
+    }
+
+    [Fact]
+    public void EquipWeapon_ReplacesAttacksWithNewWeaponsAttacks()
+    {
+        var m = new Mercenary();
+        var sword = new Sword();
+
+        m.EquipWeapon(sword, new Banner());
+
+        Assert.Equal(sword.Attacks.Count, m.Attacks.Count);
+        foreach (var attack in sword.Attacks)
+            Assert.Contains(attack, m.Attacks);
+        foreach (var attack in new Unarmed().Attacks)
+            Assert.DoesNotContain(attack, m.Attacks);
+    }
+
+    [Fact]
+    public void EquipWeapon_ReturnsPreviousWeaponToBannerInventory()
+    {
+        var m = new Mercenary();
+        var banner = new Banner();
+        var sword = new Sword();
+        m.EquipWeapon(sword, banner);
+
+        var bow = new Bow();
+        m.EquipWeapon(bow, banner);
+
+        Assert.Contains(sword, banner.Inventory);
+    }
+
+    [Fact]
+    public void EquipWeapon_DoesNotReturnUnarmedToInventory()
+    {
+        var m = new Mercenary();
+        var banner = new Banner();
+        var sword = new Sword();
+
+        m.EquipWeapon(sword, banner);
+
+        Assert.Empty(banner.Inventory);
+    }
+
+    [Fact]
+    public void EquipWeapon_RemovesEquippedWeaponFromBannerInventory()
+    {
+        var m = new Mercenary();
+        var banner = new Banner();
+        var sword = new Sword();
+        banner.Inventory.Add(sword);
+
+        m.EquipWeapon(sword, banner);
+
+        Assert.DoesNotContain(sword, banner.Inventory);
+    }
+
     [Fact]
     public void Mercenary_IsACreature()
     {
@@ -104,10 +170,10 @@ public class MercenaryTests
     }
 
     [Fact]
-    public void Mercenary_HasRushAndDefensiveStance_InSkills()
+    public void Mercenary_HasDefensiveStance_InSkills_ButNotRush()
     {
         var m = new Mercenary();
-        Assert.Contains(m.Skills, s => s.Name == "Rush");
+        Assert.DoesNotContain(m.Skills, s => s.Name == "Rush");
         Assert.Contains(m.Skills, s => s.Name == "Defensive Stance");
         Assert.DoesNotContain(m.Skills, s => s.Name == "Dodge");
         Assert.DoesNotContain(m.Skills, s => s.Name == "Block");
@@ -117,7 +183,7 @@ public class MercenaryTests
     public void Rush_HasCorrectProperties()
     {
         var m = new Mercenary(stamina: 4); // MovementPoints = 4+3 = 7, half = 3
-        var rush = m.Skills.First(s => s.Name == "Rush");
+        var rush = m.CreateRush();
         Assert.Equal(0, rush.MinDamage);
         Assert.Equal(0, rush.MaxDamage);
         Assert.Equal(1, rush.ActionPointCost);

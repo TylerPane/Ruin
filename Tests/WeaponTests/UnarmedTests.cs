@@ -10,7 +10,7 @@ public class UnarmedTests
     private readonly Unarmed _u = new();
 
     [Fact] public void Unarmed_HasCorrectType()    => Assert.Equal(WeaponType.Unarmed, _u.Type);
-    [Fact] public void Unarmed_HasThreeAttacks()   => Assert.Equal(3, _u.Attacks.Count);
+    [Fact] public void Unarmed_HasTwoAttacks()     => Assert.Equal(2, _u.Attacks.Count);
 
     [Fact]
     public void Punch_HasCorrectProperties()
@@ -43,7 +43,7 @@ public class UnarmedTests
     [Fact]
     public void Shout_HasNoDamageAndCorrectRange()
     {
-        var a = _u.Attacks.First(a => a.Name == "Shout");
+        var a = Unarmed.CreateShout();
         Assert.Equal(0, a.MinDamage);
         Assert.Equal(0, a.MaxDamage);
         Assert.Equal(1, a.ActionPointCost);
@@ -56,7 +56,7 @@ public class UnarmedTests
     [Fact]
     public void Shout_HasCircularBurstShape_EuclideanDistanceFour()
     {
-        var a = _u.Attacks.First(a => a.Name == "Shout");
+        var a = Unarmed.CreateShout();
         var offsets = a.AttackShape.Offsets.ToHashSet();
 
         // Caster's own tile is in the burst (self-buff).
@@ -85,7 +85,7 @@ public class UnarmedTests
     [Fact]
     public void Shout_OnHit_BuffsPhysicalDefenseByTwoForThreeTurns()
     {
-        var a = _u.Attacks.First(a => a.Name == "Shout");
+        var a = Unarmed.CreateShout();
         Assert.NotNull(a.OnHit);
         Assert.Equal(AttackEffectType.StatIncrease, a.OnHit!.Type);
         Assert.Equal(CombatStat.PhysicalDefense, a.OnHit.Stats[0].Stat);

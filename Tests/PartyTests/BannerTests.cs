@@ -1,10 +1,27 @@
 using RuinGamePDT.Creatures;
 using RuinGamePDT.Party;
+using RuinGamePDT.Weapons;
 
 namespace RuinGamePDT.Tests;
 
 public class BannerTests
 {
+    [Fact]
+    public void NewBanner_HasEmptyInventory()
+    {
+        var banner = new Banner();
+        Assert.Empty(banner.Inventory);
+    }
+
+    [Fact]
+    public void Inventory_CanAddWeapon()
+    {
+        var banner = new Banner();
+        var sword = new Sword();
+        banner.Inventory.Add(sword);
+        Assert.Contains(sword, banner.Inventory);
+    }
+
     [Fact]
     public void AddMercenary_ReturnsTrue_WhenBelowMaxSize()
     {

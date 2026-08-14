@@ -157,17 +157,16 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
             }
         }
 
-        // Skill keys 8/9/0 (Rush/Defensive Stance/First Aid): activate skills while in Movement or Attack mode.
+        // Skill keys 8/9 (Defensive Stance/First Aid): activate skills while in Movement or Attack mode.
         if (_selected is Mercenary && (_mode == Mode.Movement || _mode == Mode.Attack))
         {
             if (JustPressed(kb, Keys.D8)) ActivateSlot(7);
             else if (JustPressed(kb, Keys.D9)) ActivateSlot(8);
-            else if (JustPressed(kb, Keys.D0)) ActivateSlot(9);
         }
     }
 
-    // Slot 0-6: attacks. Slot 7: Rush (self-cast, bypasses resolver). Slot 8: Defensive Stance
-    // (self-cast via resolver). Slot 9: First Aid (targeted heal, enters Attack mode).
+    // Slot 0-6: attacks. Slot 7: Defensive Stance (self-cast via resolver). Slot 8: First Aid
+    // (targeted heal, enters Attack mode).
     private void ActivateSlot(int slot)
     {
         if (_selected == null) return;
@@ -185,25 +184,9 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
 
         switch (slot)
         {
-            case 7: // Rush (Skills[0]): spend AP, grant MP this turn only (no stat mutation)
+            case 7: // Defensive Stance (Skills[0]): self-cast
                 if (skillUser.Skills.Count <= 0) return;
-                var rush = skillUser.Skills[0];
-                if (state.GetRemainingActionPoints(skillUser) < rush.ActionPointCost) return;
-                state.SpendActionPoints(skillUser, rush.ActionPointCost);
-                var effectDescriptions = new List<string>();
-                if (rush.OnHit?.Stats is { Count: > 0 } stats)
-                {
-                    var s = stats[0];
-                    state.AddMovement(skillUser, Random.Shared.Next(s.MinAmount, s.MaxAmount + 1));
-                    effectDescriptions.Add($"{s.Stat} +");
-                }
-                _combatLog.AddSelfCastEntry(skillUser.Name, rush.Name, effectDescriptions, skillUser.CurrentHp, skillUser.CombatStats.HitPoints);
-                EnterMovementMode();
-                break;
-
-            case 8: // Defensive Stance (Skills[1]): self-cast
-                if (skillUser.Skills.Count <= 1) return;
-                var stance = skillUser.Skills[1];
+                var stance = skillUser.Skills[0];
                 if (state.GetRemainingActionPoints(skillUser) < stance.ActionPointCost) return;
                 var pos = state.GetPosition(skillUser);
                 var entries = _resolver.Resolve(skillUser, stance, pos, state);
@@ -211,9 +194,9 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
                 EnterMovementMode();
                 break;
 
-            case 9: // First Aid (Skills[2]): enter targeting mode
-                if (skillUser.Skills.Count <= 2) return;
-                var firstAid = skillUser.Skills[2];
+            case 8: // First Aid (Skills[1]): enter targeting mode
+                if (skillUser.Skills.Count <= 1) return;
+                var firstAid = skillUser.Skills[1];
                 if (state.GetRemainingActionPoints(skillUser) < firstAid.ActionPointCost) return;
                 EnterAttackMode(firstAid);
                 break;
@@ -541,8 +524,8 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
                     sb.Draw(icon, rect, Color.White);
             }
 
-            // Skills in fixed slots 7 (Rush/key 8), 8 (Defensive Stance/key 9), 9 (First Aid/key 0)
-            int[] skillSlots = { 7, 8, 9 };
+            // Skills in fixed slots 7 (Defensive Stance/key 8), 8 (First Aid/key 9)
+            int[] skillSlots = { 7, 8 };
             for (int i = 0; i < Math.Min(skillSlots.Length, merc.Skills.Count); i++)
             {
                 int slot = skillSlots[i];

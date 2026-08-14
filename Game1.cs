@@ -7,6 +7,7 @@ using RuinGamePDT.Generation;
 using RuinGamePDT.Party;
 using RuinGamePDT.Rendering;
 using RuinGamePDT.Resources;
+using RuinGamePDT.Weapons;
 using RuinGamePDT.World;
 
 namespace RuinGamePDT;
@@ -104,6 +105,8 @@ public class Game1 : Game
         _banner = new Banner();
         _banner.AddMercenary(Mercenary.CreateRandom());
         _banner.AddMercenary(Mercenary.CreateRandom());
+        _banner.Inventory.Add(new Sword());
+        _banner.Inventory.Add(new Bow());
         OverworldMovement.ScoutAround(_banner, _world);
         _overworldScene = new OverworldScene(_world, _banner, _pixel);
         _sceneMode = SceneMode.Overworld;
