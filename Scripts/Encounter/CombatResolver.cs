@@ -5,9 +5,11 @@ namespace RuinGamePDT.Encounter;
 
 public class CombatResolver(Func<int, int, int> roll)
 {
-    public void Resolve(Creature attacker, Attack attack, (int X, int Y) targetTile, EncounterState state)
+    public List<CombatLogEntry> Resolve(Creature attacker, Attack attack, (int X, int Y) targetTile, EncounterState state)
     {
+        var entries = new List<CombatLogEntry>();
         state.SpendActionPoints(attacker, attack.ActionPointCost);
+        attacker.StartCooldown(attack);
         int hitCount = roll(attack.MinHits, attack.MaxHits + 1);
 
         foreach (var (dx, dy) in attack.AttackShape.Offsets)
@@ -17,11 +19,18 @@ public class CombatResolver(Func<int, int, int> roll)
             var defender = state.GetCreatureAt(tx, ty);
             if (defender == null) continue;
 
+            bool isBuff = attack.MaxDamage == 0;
+            if (isBuff && !state.IsAlliedWith(attacker, defender)) continue;
+
             for (int i = 0; i < hitCount; i++)
             {
                 int hitThreshold = 100 - attack.Accuracy + (int)defender.CombatStats.Evasion;
                 int hitRoll = roll(1, 101);
-                if (hitRoll < hitThreshold) continue;
+                if (!isBuff && hitRoll < hitThreshold)
+                {
+                    entries.Add(new CombatLogEntry(attacker.Name, attack.Name, defender.Name, WasHit: false, Damage: 0, EffectsApplied: Array.Empty<string>()));
+                    continue;
+                }
 
                 bool isCrit = attack.AutoCrit;
                 if (!isCrit)
@@ -39,8 +48,20 @@ public class CombatResolver(Func<int, int, int> roll)
 
                 defender.CurrentHp -= dmg;
 
-                if (attack.OnHit != null) defender.ApplyStatusEffect(attack.OnHit);
-                if (isCrit && attack.OnCrit != null) defender.ApplyStatusEffect(attack.OnCrit);
+                var effects = new List<string>();
+                if (attack.OnHit != null && roll(1, 101) <= attack.OnHit.Chance)
+                {
+                    defender.ApplyStatusEffect(attack.OnHit);
+                    effects.AddRange(DescribeEffect(attack.OnHit));
+                }
+                if (isCrit && attack.OnCrit != null && roll(1, 101) <= attack.OnCrit.Chance)
+                {
+                    defender.ApplyStatusEffect(attack.OnCrit);
+                    effects.AddRange(DescribeEffect(attack.OnCrit));
+                }
+
+                entries.Add(new CombatLogEntry(attacker.Name, attack.Name, defender.Name, WasHit: true, Damage: dmg, EffectsApplied: effects,
+                    TargetCurrentHp: defender.CurrentHp, TargetMaxHp: defender.CombatStats.HitPoints));
 
                 if (defender.CurrentHp <= 0)
                 {
@@ -49,17 +70,31 @@ public class CombatResolver(Func<int, int, int> roll)
                 }
             }
         }
+
+        return entries;
     }
 
-    // TODO(distance): switch to Euclidean (sqrt(dx² + dy²)) for circular range
-    // shape. Currently square shape — matches the v1 spec's
-    // explicit placeholder; replace alongside the EncounterScene targeting
-    // overlay's distance calculation.
+    public static IEnumerable<string> DescribeEffect(AttackEffect effect)
+    {
+        foreach (var statChange in effect.Stats)
+        {
+            yield return effect.Type switch
+            {
+                AttackEffectType.StatIncrease => $"{statChange.Stat} +",
+                AttackEffectType.StatReduction => $"{statChange.Stat} -",
+                _ => effect.Type.ToString()
+            };
+        }
+    }
+
     public bool IsInRange(Creature attacker, Attack attack, (int X, int Y) targetTile, EncounterState state)
     {
         if (!state.IsPlaced(attacker)) return false;
         var pos = state.GetPosition(attacker);
-        int distance = Math.Max(Math.Abs(targetTile.X - pos.X), Math.Abs(targetTile.Y - pos.Y));
-        return distance >= attack.MinRange && distance <= attack.Range;
+        double distance = Math.Sqrt(Math.Pow(targetTile.X - pos.X, 2) + Math.Pow(targetTile.Y - pos.Y, 2));
+        // Epsilon absorbs grid-diagonal rounding (e.g. adjacent diagonal ≈1.41)
+        // so an integer range still reaches every tile within that many steps.
+        const double epsilon = 0.5;
+        return distance >= attack.MinRange - epsilon && distance <= attack.Range + epsilon;
     }
 }

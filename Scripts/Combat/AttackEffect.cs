@@ -8,5 +8,6 @@ public record AttackEffect(
     AttackEffectType Type,
     IReadOnlyList<StatChange> Stats,
     int MinDuration,
-    int MaxDuration
+    int MaxDuration,
+    int Chance = 100
 );

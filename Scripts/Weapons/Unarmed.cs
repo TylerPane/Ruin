@@ -28,27 +28,21 @@ public class Unarmed : Weapon
             range: 5
         ));
 
-        Attacks.Add(new Attack(
-            name: "Shout",
-            minDamage: 0,
-            maxDamage: 0,
-            actionPointCost: 1,
-            accuracy: 100,
-            attackShape: new AttackShape(BurstOffsets(radius: 4)),
-            range: 4,
-            reaction: null,
-            onHit: new AttackEffect(AttackEffectType.StatIncrease, [new StatChange(CombatStat.PhysicalDefense, 2, 2)], MinDuration: 3, MaxDuration: 3),
-            onCrit: null
-        ));
     }
 
-    private static IEnumerable<(int, int)> BurstOffsets(int radius)
-    {
-        var offsets = new List<(int, int)>();
-        for (int x = -radius; x <= radius; x++)
-            for (int y = -radius; y <= radius; y++)
-                if (Math.Abs(x) + Math.Abs(y) <= radius)
-                    offsets.Add((x, y));
-        return offsets;
-    }
+    // Not currently added to Attacks — doesn't fit the unarmed kit right now,
+    // but kept defined for future use.
+    public static Attack CreateShout() => new(
+        name: "Shout",
+        minDamage: 0,
+        maxDamage: 0,
+        actionPointCost: 1,
+        accuracy: 100,
+        attackShape: AttackShape.CircularBurst(radius: 4),
+        range: 0,
+        reaction: null,
+        onHit: new AttackEffect(AttackEffectType.StatIncrease, [new StatChange(CombatStat.PhysicalDefense, 2, 2)], MinDuration: 3, MaxDuration: 3),
+        onCrit: null,
+        minRange: 0
+    );
 }

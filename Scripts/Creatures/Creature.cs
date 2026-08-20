@@ -71,6 +71,28 @@ public abstract class Creature
     public List<Skill> Skills { get; } = [];
     public List<StatusEffect> StatusEffects { get; } = [];
     public Weapon? EquippedWeapon { get; set; }
+    public int MaxAttacksPerTurn { get; set; } = 1;
+
+    private readonly Dictionary<Attack, int> _cooldownsRemaining = new();
+
+    public bool IsOnCooldown(Attack attack) =>
+        _cooldownsRemaining.TryGetValue(attack, out int remaining) && remaining > 0;
+
+    public void StartCooldown(Attack attack)
+    {
+        if (attack.Cooldown <= 0) return;
+        _cooldownsRemaining[attack] = attack.Cooldown;
+    }
+
+    public void TickCooldowns()
+    {
+        foreach (var attack in _cooldownsRemaining.Keys.ToList())
+        {
+            _cooldownsRemaining[attack]--;
+            if (_cooldownsRemaining[attack] <= 0)
+                _cooldownsRemaining.Remove(attack);
+        }
+    }
 
     protected virtual int StatCap => int.MaxValue;
 

@@ -10,7 +10,7 @@ public class UnarmedTests
     private readonly Unarmed _u = new();
 
     [Fact] public void Unarmed_HasCorrectType()    => Assert.Equal(WeaponType.Unarmed, _u.Type);
-    [Fact] public void Unarmed_HasThreeAttacks()   => Assert.Equal(3, _u.Attacks.Count);
+    [Fact] public void Unarmed_HasTwoAttacks()     => Assert.Equal(2, _u.Attacks.Count);
 
     [Fact]
     public void Punch_HasCorrectProperties()
@@ -43,46 +43,49 @@ public class UnarmedTests
     [Fact]
     public void Shout_HasNoDamageAndCorrectRange()
     {
-        var a = _u.Attacks.First(a => a.Name == "Shout");
+        var a = Unarmed.CreateShout();
         Assert.Equal(0, a.MinDamage);
         Assert.Equal(0, a.MaxDamage);
         Assert.Equal(1, a.ActionPointCost);
-        Assert.Equal(4, a.Range);
+        Assert.Equal(0, a.Range);
+        Assert.Equal(0, a.MinRange);
         Assert.Null(a.OnCrit);
         Assert.Null(a.Reaction);
     }
 
     [Fact]
-    public void Shout_HasDiamondBurstShape_ManhattanDistanceFour()
+    public void Shout_HasCircularBurstShape_EuclideanDistanceFour()
     {
-        var a = _u.Attacks.First(a => a.Name == "Shout");
+        var a = Unarmed.CreateShout();
         var offsets = a.AttackShape.Offsets.ToHashSet();
-
-        // 41 tiles for Manhattan distance ≤ 4 (1+4+8+12+16).
-        Assert.Equal(41, offsets.Count);
 
         // Caster's own tile is in the burst (self-buff).
         Assert.Contains((0, 0), offsets);
 
-        // The 4 outermost cardinal tiles.
+        // The 4 outermost cardinal tiles (distance exactly 4).
         Assert.Contains((4, 0),  offsets);
         Assert.Contains((-4, 0), offsets);
         Assert.Contains((0, 4),  offsets);
         Assert.Contains((0, -4), offsets);
 
-        // A diagonal at the boundary (|2|+|2| = 4).
+        // A diagonal within Euclidean 4: sqrt(2²+2²) ≈ 2.83 <= 4.
         Assert.Contains((2, 2), offsets);
 
-        // One step beyond Manhattan-4 is excluded.
-        Assert.DoesNotContain((5, 0),  offsets);
-        Assert.DoesNotContain((3, 2),  offsets); // |3|+|2| = 5
-        Assert.DoesNotContain((4, 1),  offsets); // |4|+|1| = 5
+        // Just past distance 4 on the diagonal: sqrt(3²+3²) ≈ 4.24 > 4.
+        Assert.DoesNotContain((3, 3), offsets);
+
+        // sqrt(3²+2²) ≈ 3.6 <= 4 — included under Euclidean, though it was
+        // outside the old Manhattan-4 diamond.
+        Assert.Contains((3, 2), offsets);
+
+        // Straight past the radius on an axis is still excluded either way.
+        Assert.DoesNotContain((5, 0), offsets);
     }
 
     [Fact]
     public void Shout_OnHit_BuffsPhysicalDefenseByTwoForThreeTurns()
     {
-        var a = _u.Attacks.First(a => a.Name == "Shout");
+        var a = Unarmed.CreateShout();
         Assert.NotNull(a.OnHit);
         Assert.Equal(AttackEffectType.StatIncrease, a.OnHit!.Type);
         Assert.Equal(CombatStat.PhysicalDefense, a.OnHit.Stats[0].Stat);

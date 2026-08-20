@@ -243,10 +243,40 @@ public class CombatResolverTests
             MinDuration: 1, MaxDuration: 1);
         var attack = BasicAttack(minDmg: 1, maxDmg: 1, accuracy: 100, onHit: onHit);
 
-        new CombatResolver(Rolls(1, 100, 0, 1)).Resolve(attacker, attack, (1, 0), state);
+        new CombatResolver(Rolls(1, 100, 0, 1, 1)).Resolve(attacker, attack, (1, 0), state);
 
         Assert.Single(defender.StatusEffects);
         Assert.Equal(StatusEffectType.Bleed, defender.StatusEffects[0].Type);
+    }
+
+    [Fact]
+    public void OnHitShould_NotFire_WhenChanceRollFails()
+    {
+        var (state, attacker, defender) = MakeFight();
+        var onHit = new AttackEffect(AttackEffectType.Bleed,
+            new[] { new StatChange(CombatStat.HitPoints, 2, 2) },
+            MinDuration: 1, MaxDuration: 1, Chance: 25);
+        var attack = BasicAttack(minDmg: 1, maxDmg: 1, accuracy: 100, onHit: onHit);
+
+        // hitCount=1, hit=100, crit=0, dmg=1, procRoll=26 (fails 25% chance)
+        new CombatResolver(Rolls(1, 100, 0, 1, 26)).Resolve(attacker, attack, (1, 0), state);
+
+        Assert.Empty(defender.StatusEffects);
+    }
+
+    [Fact]
+    public void OnHitShould_Fire_WhenChanceRollSucceeds()
+    {
+        var (state, attacker, defender) = MakeFight();
+        var onHit = new AttackEffect(AttackEffectType.Bleed,
+            new[] { new StatChange(CombatStat.HitPoints, 2, 2) },
+            MinDuration: 1, MaxDuration: 1, Chance: 25);
+        var attack = BasicAttack(minDmg: 1, maxDmg: 1, accuracy: 100, onHit: onHit);
+
+        // hitCount=1, hit=100, crit=0, dmg=1, procRoll=25 (succeeds, roll<=chance)
+        new CombatResolver(Rolls(1, 100, 0, 1, 25)).Resolve(attacker, attack, (1, 0), state);
+
+        Assert.Single(defender.StatusEffects);
     }
 
     [Fact]
@@ -262,8 +292,8 @@ public class CombatResolverTests
         new CombatResolver(Rolls(1, 100, 74, 1)).Resolve(attacker, attack, (1, 0), state);
         Assert.Empty(defender.StatusEffects);
 
-        // Second: crit (75 >= 75)
-        new CombatResolver(Rolls(1, 100, 75, 1)).Resolve(attacker, attack, (1, 0), state);
+        // Second: crit (75 >= 75), then onCrit proc roll = 1 (succeeds)
+        new CombatResolver(Rolls(1, 100, 75, 1, 1)).Resolve(attacker, attack, (1, 0), state);
         Assert.Single(defender.StatusEffects);
     }
 
@@ -288,9 +318,24 @@ public class CombatResolverTests
         var resolver = new CombatResolver(Rolls());
 
         Assert.True(resolver.IsInRange(attacker, attack, (5, 0), state));
-        Assert.True(resolver.IsInRange(attacker, attack, (5, 5), state));   // Chebyshev: max(5,5)=5
+        Assert.False(resolver.IsInRange(attacker, attack, (5, 5), state));  // Euclidean: sqrt(5²+5²)≈7.07 > 5
         Assert.False(resolver.IsInRange(attacker, attack, (6, 0), state));
         Assert.False(resolver.IsInRange(attacker, attack, (6, 6), state));
+    }
+
+    [Fact]
+    public void SkillShould_IncludeDiagonalAdjacency_AtRangeOne()
+    {
+        // Melee range:1 must still reach true diagonal-adjacent tiles
+        // (dist sqrt(2)≈1.41), not just cardinal-adjacent (dist 1).
+        var (state, attacker, _) = MakeFight();
+        var attack = new Attack("Melee", 1, 1, 1, 100, new AttackShape(new[] { (0, 0) }), range: 1);
+        var resolver = new CombatResolver(Rolls());
+
+        Assert.True(resolver.IsInRange(attacker, attack, (1, 0), state));  // cardinal
+        Assert.True(resolver.IsInRange(attacker, attack, (1, 1), state));  // diagonal
+        Assert.False(resolver.IsInRange(attacker, attack, (2, 0), state)); // out of range
+        Assert.False(resolver.IsInRange(attacker, attack, (2, 2), state)); // out of range
     }
 
     [Fact]
@@ -306,6 +351,54 @@ public class CombatResolverTests
         Assert.True(resolver.IsInRange(attacker, attack, (3, 0), state));   // exactly min
         Assert.True(resolver.IsInRange(attacker, attack, (10, 0), state));  // exactly max
         Assert.False(resolver.IsInRange(attacker, attack, (11, 0), state)); // too far
+    }
+
+    [Fact]
+    public void BuffSkillShould_AlwaysHitAllyRegardlessOfEvasionRoll()
+    {
+        // Ally target with high evasion (agility 20 -> Evasion 100). A roll of 1
+        // would normally miss against threshold=100, but buff skills auto-hit allies.
+        var state = new EncounterState(new EncounterMap(20, 20));
+        var attacker = new TestCreature("A", 0, 1, 1, 0, 1);
+        var ally = new TestCreature("Ally", 20, 1, 1, 0, 0);
+        state.Mercenaries.Add(attacker);
+        state.Mercenaries.Add(ally);
+        state.PlaceCreature(attacker, 0, 0);
+        state.PlaceCreature(ally, 1, 0);
+
+        var onHit = new AttackEffect(AttackEffectType.StatIncrease,
+            new[] { new StatChange(CombatStat.PhysicalDefense, 2, 2) },
+            MinDuration: 3, MaxDuration: 3);
+        var attack = BasicAttack(minDmg: 0, maxDmg: 0, accuracy: 100, onHit: onHit);
+
+        // rolls: hitCount=1, hit=1 (would miss normally, but isBuff skips the check), crit=0, dmg=0, procRoll=1
+        new CombatResolver(Rolls(1, 1, 0, 0, 1)).Resolve(attacker, attack, (1, 0), state);
+
+        Assert.Single(ally.StatusEffects);
+        Assert.Equal(StatusEffectType.StatIncrease, ally.StatusEffects[0].Type);
+    }
+
+    [Fact]
+    public void BuffSkillShould_SkipEnemiesEntirely()
+    {
+        var state = new EncounterState(new EncounterMap(20, 20));
+        var attacker = new TestCreature("A", 0, 1, 1, 0, 1);
+        var enemy = new TestCreature("E", 0, 1, 1, 0, 5);
+        state.Mercenaries.Add(attacker);
+        state.Enemies.Add(enemy);
+        state.PlaceCreature(attacker, 0, 0);
+        state.PlaceCreature(enemy, 1, 0);
+
+        var onHit = new AttackEffect(AttackEffectType.StatIncrease,
+            new[] { new StatChange(CombatStat.PhysicalDefense, 2, 2) },
+            MinDuration: 3, MaxDuration: 3);
+        var attack = BasicAttack(minDmg: 0, maxDmg: 0, accuracy: 100, onHit: onHit);
+
+        // rolls: hitCount=1 only — enemy defender is skipped entirely, no hit/crit/dmg rolls consumed.
+        var entries = new CombatResolver(Rolls(1)).Resolve(attacker, attack, (1, 0), state);
+
+        Assert.Empty(entries);
+        Assert.Empty(enemy.StatusEffects);
     }
 
     [Fact]
@@ -361,5 +454,110 @@ public class CombatResolverTests
 
         // Defender heals: 14 + 10 = 24, clamped to 15
         Assert.Equal(15, defender.CurrentHp);
+    }
+
+    [Fact]
+    public void Resolve_OnHit_ReturnsEntryWithDamageAndHitFlag()
+    {
+        var (state, attacker, defender) = MakeFight(attackerStrength: 1, defenderStamina: 0);
+        var attack = BasicAttack(minDmg: 5, maxDmg: 5, accuracy: 80);
+
+        var entries = new CombatResolver(Rolls(1, 20, 0, 5)).Resolve(attacker, attack, (1, 0), state);
+
+        Assert.Single(entries);
+        Assert.Equal("A", entries[0].AttackerName);
+        Assert.Equal("Test", entries[0].AttackName);
+        Assert.Equal("D", entries[0].TargetName);
+        Assert.True(entries[0].WasHit);
+        Assert.True(entries[0].Damage > 0);
+        Assert.Empty(entries[0].EffectsApplied);
+    }
+
+    [Fact]
+    public void Resolve_Miss_ReturnsEntryWithWasHitFalse()
+    {
+        var (state, attacker, defender) = MakeFight();
+        var attack = BasicAttack(accuracy: 80);
+
+        var entries = new CombatResolver(Rolls(1, 19)).Resolve(attacker, attack, (1, 0), state);
+
+        Assert.Single(entries);
+        Assert.False(entries[0].WasHit);
+        Assert.Equal(0, entries[0].Damage);
+    }
+
+    [Fact]
+    public void Resolve_AoE_ReturnsOneEntryPerTargetHit()
+    {
+        var state = new EncounterState(new EncounterMap(20, 20));
+        var attacker = new TestCreature("A", 0, 1, 1, 1, 1);
+        var d1 = new TestCreature("D1", 0, 1, 1, 0, 0);
+        var d2 = new TestCreature("D2", 0, 1, 1, 0, 0);
+        state.Mercenaries.Add(attacker);
+        state.Enemies.Add(d1);
+        state.Enemies.Add(d2);
+        state.PlaceCreature(attacker, 0, 0);
+        state.PlaceCreature(d1, 5, 5);
+        state.PlaceCreature(d2, 6, 5);
+
+        var attack = BasicAttack(minDmg: 5, maxDmg: 5, accuracy: 100, shape: new[] { (0, 0), (1, 0) });
+
+        var entries = new CombatResolver(Rolls(1, 100, 0, 5, 100, 0, 5)).Resolve(attacker, attack, (5, 5), state);
+
+        Assert.Equal(2, entries.Count);
+        Assert.Contains(entries, e => e.TargetName == "D1");
+        Assert.Contains(entries, e => e.TargetName == "D2");
+    }
+
+    [Fact]
+    public void Resolve_OnHitEffect_IncludesEffectDescriptionInEntry()
+    {
+        var (state, attacker, defender) = MakeFight();
+        var onHit = new AttackEffect(AttackEffectType.Bleed,
+            new[] { new StatChange(CombatStat.HitPoints, 2, 2) },
+            MinDuration: 1, MaxDuration: 1);
+        var attack = BasicAttack(minDmg: 1, maxDmg: 1, accuracy: 100, onHit: onHit);
+
+        var entries = new CombatResolver(Rolls(1, 100, 0, 1, 1)).Resolve(attacker, attack, (1, 0), state);
+
+        Assert.Single(entries);
+        Assert.Single(entries[0].EffectsApplied);
+        Assert.Equal("Bleed", entries[0].EffectsApplied[0]);
+    }
+
+    [Fact]
+    public void Resolve_NegativeDamage_EntryReportsNegativeDamageAsHeal()
+    {
+        var (state, attacker, defender) = MakeFight(defenderStamina: 5);
+        defender.CurrentHp = 10;
+        var attack = BasicAttack(minDmg: -3, maxDmg: -3, accuracy: 100);
+
+        var entries = new CombatResolver(Rolls(1, 100, 0, -3)).Resolve(attacker, attack, (1, 0), state);
+
+        Assert.Single(entries);
+        Assert.True(entries[0].Damage < 0);
+    }
+
+    [Fact]
+    public void Resolve_AttackWithCooldown_StartsCooldownOnAttacker()
+    {
+        var (state, attacker, defender) = MakeFight();
+        var attack = new Attack("Cooldown Test", 1, 1, 1, 100,
+            new AttackShape(new[] { (0, 0) }), range: 5, cooldown: 2);
+
+        new CombatResolver(Rolls(1, 100, 0, 1)).Resolve(attacker, attack, (1, 0), state);
+
+        Assert.True(attacker.IsOnCooldown(attack));
+    }
+
+    [Fact]
+    public void Resolve_AttackWithoutCooldown_NeverStartsCooldown()
+    {
+        var (state, attacker, defender) = MakeFight();
+        var attack = BasicAttack(minDmg: 1, maxDmg: 1, accuracy: 100);
+
+        new CombatResolver(Rolls(1, 100, 0, 1)).Resolve(attacker, attack, (1, 0), state);
+
+        Assert.False(attacker.IsOnCooldown(attack));
     }
 }

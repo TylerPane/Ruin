@@ -183,4 +183,41 @@ public class TurnManagerTests
 
         Assert.False(tm.CanMove(current));
     }
+
+    [Fact]
+    public void StartEncounter_TicksCooldowns_ForTheSoleCreature()
+    {
+        var state = new EncounterState(new EncounterMap(20, 20));
+        var creature = new TestCreature("A", 1, 1, 1, 1, 1);
+        state.Mercenaries.Add(creature);
+        state.PlaceCreature(creature, 0, 0);
+
+        var attack = new Attack("Test", 1, 1, 1, 100,
+            new AttackShape(new[] { (0, 0) }), range: 1, cooldown: 2);
+        creature.StartCooldown(attack);
+
+        var turnManager = new TurnManager(state);
+        turnManager.StartEncounter(); // one tick: cooldown 2 -> 1
+
+        Assert.True(creature.IsOnCooldown(attack));
+    }
+
+    [Fact]
+    public void EndCreatureTurn_TicksCooldownAgain_OnReturnToSoleCreature()
+    {
+        var state = new EncounterState(new EncounterMap(20, 20));
+        var creature = new TestCreature("A", 1, 1, 1, 1, 1);
+        state.Mercenaries.Add(creature);
+        state.PlaceCreature(creature, 0, 0);
+
+        var attack = new Attack("Test", 1, 1, 1, 100,
+            new AttackShape(new[] { (0, 0) }), range: 1, cooldown: 2);
+        creature.StartCooldown(attack);
+
+        var turnManager = new TurnManager(state);
+        turnManager.StartEncounter();       // tick 1: cooldown 2 -> 1
+        turnManager.EndCreatureTurn(creature); // tick 2: cooldown 1 -> 0, cleared
+
+        Assert.False(creature.IsOnCooldown(attack));
+    }
 }

@@ -8,9 +8,16 @@ using RuinGamePDT.Resources;
 
 namespace RuinGamePDT.Rendering;
 
-public class EncounterScene(EncounterState state, TurnManager turns, Texture2D pixel, CombatResolver resolver, Dictionary<string, Texture2D> skillIcons)
+public class EncounterScene(EncounterState state, TurnManager turns, Texture2D pixel, CombatResolver resolver, Dictionary<string, Texture2D> skillIcons, SpriteFont logFont)
 {
     private const int TileSize = 16;
+    private const int LogPanelWidth = 260;
+    private const int LogPanelMargin = 8;
+
+    private const int HotbarBoxSize = 32;
+    private const int HotbarBoxGap = 2;
+    private const int HotbarBoxCount = 10;
+    private const int HotbarBarY = 830;
 
     private enum Mode { Idle, Movement, Attack }
 
@@ -19,23 +26,53 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
     private Attack? _activeAttack;
     private Dictionary<(int X, int Y), int> _reachable = new();
     private HashSet<(int X, int Y)> _validTargets = new();
+    private HashSet<(int X, int Y)> _rangeTiles = new();
     private (int X, int Y) _hoverTile;
 
     private MouseState _prevMouse;
     private KeyboardState _prevKeyboard;
+    private int _mapOffsetX;
+    private int _lastViewportWidth;
+    private int _lastViewportHeight;
+    private bool _inspectClickConsumed;
 
     private readonly CombatResolver _resolver = resolver;
     private readonly Dictionary<string, Texture2D> _skillIcons = skillIcons;
+    private readonly CombatLog _combatLog = new();
+    private readonly EnemyInspectWindow _inspectWindow = new();
 
-    public void Update(MouseState mouse)
+    public void AddCombatLogEntries(IEnumerable<CombatLogEntry> entries) => _combatLog.AddEntries(entries);
+
+    private int ContentX => _mapOffsetX;
+
+    public void Update(MouseState mouse, int viewportWidth, int viewportHeight)
     {
+        int mapWidth = state.Map.Width * TileSize;
+        _mapOffsetX = Math.Max(0, (viewportWidth - mapWidth) / 2);
+        _lastViewportWidth = viewportWidth;
+        _lastViewportHeight = viewportHeight;
+
+        // Auto-select the mercenary whose turn it currently is, so the player
+        // doesn't have to click them before acting.
+        if (turns.CurrentCreature is Mercenary current && current != _selected && turns.CanMove(current))
+        {
+            _selected = current;
+            EnterMovementMode();
+        }
+
         var kb = Keyboard.GetState();
 
-        // Hover tile (clamped to map)
-        int hx = Math.Clamp(mouse.X / TileSize, 0, state.Map.Width - 1);
+        // Hover tile (clamped to map, accounting for the centered map offset)
+        int hx = Math.Clamp((mouse.X - ContentX) / TileSize, 0, state.Map.Width - 1);
         int hy = Math.Clamp(mouse.Y / TileSize, 0, state.Map.Height - 1);
         _hoverTile = (hx, hy);
 
+        int scrollDelta = (mouse.ScrollWheelValue - _prevMouse.ScrollWheelValue) / 40;
+        if (scrollDelta != 0)
+            _combatLog.HandleScroll(-scrollDelta);
+
+        _inspectClickConsumed = HandleInspectWindow(mouse);
+        _inspectWindow.UpdateHover(mouse.X, mouse.Y);
         HandleKeyboard(kb);
         HandleMouseClick(mouse);
 
@@ -47,6 +84,43 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
     // Input
     // ────────────────────────────────────────────────────────────────────────
 
+    private bool HandleInspectWindow(MouseState mouse)
+    {
+        bool wasOpen = _inspectWindow.IsOpen;
+        bool leftJustClicked = mouse.LeftButton == ButtonState.Pressed && _prevMouse.LeftButton == ButtonState.Released;
+        bool rightJustClicked = mouse.RightButton == ButtonState.Pressed && _prevMouse.RightButton == ButtonState.Released;
+
+        if (rightJustClicked)
+        {
+            int gx = (mouse.X - ContentX) / TileSize;
+            int gy = mouse.Y / TileSize;
+            var candidate = gx >= 0 && gx < state.Map.Width && gy >= 0 && gy < state.Map.Height
+                ? state.GetCreatureAt(gx, gy)
+                : null;
+
+            bool validCandidate = candidate != null && state.Enemies.Contains(candidate);
+            if (validCandidate)
+                _inspectWindow.Open(candidate!, (mouse.X, mouse.Y), _lastViewportWidth, _lastViewportHeight);
+            else
+                _inspectWindow.Close();
+
+            // Only consumed if the window was open before this click (even a click that closes it)
+            // or a valid enemy candidate just opened/re-anchored it. A right-click on empty ground
+            // with nothing open beforehand is not consumed, leaving it free for future handlers.
+            return wasOpen || validCandidate;
+        }
+
+        if (leftJustClicked && wasOpen)
+        {
+            if (!_inspectWindow.Contains(mouse.X, mouse.Y))
+                _inspectWindow.Close();
+            return true; // consumed whenever the window was open at the start of this click — even
+                          // the click that closes it — so it never also moves/attacks/clicks the hotbar
+        }
+
+        return false;
+    }
+
     private void HandleKeyboard(KeyboardState kb)
     {
         // Space: end the selected merc's turn (any mode).
@@ -57,11 +131,19 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
             return;
         }
 
-        // Esc: in Attack mode, return to Movement.
-        if (JustPressed(kb, Keys.Escape) && _mode == Mode.Attack)
+        // Esc: close the inspect window if open, otherwise (in Attack mode) return to Movement.
+        if (JustPressed(kb, Keys.Escape))
         {
-            EnterMovementMode();
-            return;
+            if (_inspectWindow.IsOpen)
+            {
+                _inspectWindow.Close();
+                return;
+            }
+            if (_mode == Mode.Attack)
+            {
+                EnterMovementMode();
+                return;
+            }
         }
 
         // Number keys 1-9: pick attack while in Movement or Attack mode.
@@ -70,53 +152,54 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
             for (int k = 1; k <= 9; k++)
             {
                 if (!JustPressed(kb, Keys.D0 + k)) continue;
-                int idx = k - 1;
-                if (idx >= _selected.Attacks.Count) break;
-                var attack = _selected.Attacks[idx];
-                if (state.GetRemainingActionPoints(_selected) < attack.ActionPointCost) break;
-                EnterAttackMode(attack);
+                ActivateSlot(k - 1);
                 break;
             }
         }
 
-        // Skill keys 8/9/0: activate skills while in Movement or Attack mode.
-        if (_selected is Mercenary skillUser && (_mode == Mode.Movement || _mode == Mode.Attack))
+        // Skill keys 8/9 (Defensive Stance/First Aid): activate skills while in Movement or Attack mode.
+        if (_selected is Mercenary && (_mode == Mode.Movement || _mode == Mode.Attack))
         {
-            // Key 8 → Rush (Skills[0]): spend AP, grant MP this turn only (no stat mutation)
-            if (JustPressed(kb, Keys.D8) && skillUser.Skills.Count > 0)
-            {
-                var skill = skillUser.Skills[0];
-                if (state.GetRemainingActionPoints(skillUser) >= skill.ActionPointCost)
-                {
-                    state.SpendActionPoints(skillUser, skill.ActionPointCost);
-                    if (skill.OnHit?.Stats is { Count: > 0 } stats)
-                    {
-                        var s = stats[0];
-                        state.AddMovement(skillUser, Random.Shared.Next(s.MinAmount, s.MaxAmount + 1));
-                    }
-                    EnterMovementMode();
-                }
-            }
-            // Key 0 → Defensive Stance (Skills[1]): self-cast
-            else if (JustPressed(kb, Keys.D0) && skillUser.Skills.Count > 1)
-            {
-                var skill = skillUser.Skills[1];
-                if (state.GetRemainingActionPoints(skillUser) >= skill.ActionPointCost)
-                {
-                    var pos = state.GetPosition(skillUser);
-                    _resolver.Resolve(skillUser, skill, pos, state);
-                    EnterMovementMode();
-                }
-            }
-            // Key 9 → First Aid (Skills[2]): enter targeting mode
-            else if (JustPressed(kb, Keys.D9) && skillUser.Skills.Count > 2)
-            {
-                var skill = skillUser.Skills[2];
-                if (state.GetRemainingActionPoints(skillUser) >= skill.ActionPointCost)
-                {
-                    EnterAttackMode(skill);
-                }
-            }
+            if (JustPressed(kb, Keys.D8)) ActivateSlot(7);
+            else if (JustPressed(kb, Keys.D9)) ActivateSlot(8);
+        }
+    }
+
+    // Slot 0-6: attacks. Slot 7: Defensive Stance (self-cast via resolver). Slot 8: First Aid
+    // (targeted heal, enters Attack mode).
+    private void ActivateSlot(int slot)
+    {
+        if (_selected == null) return;
+
+        if (slot <= 6)
+        {
+            if (slot >= _selected.Attacks.Count) return;
+            var attack = _selected.Attacks[slot];
+            if (state.GetRemainingActionPoints(_selected) < attack.ActionPointCost) return;
+            EnterAttackMode(attack);
+            return;
+        }
+
+        if (_selected is not Mercenary skillUser) return;
+
+        switch (slot)
+        {
+            case 7: // Defensive Stance (Skills[0]): self-cast
+                if (skillUser.Skills.Count <= 0) return;
+                var stance = skillUser.Skills[0];
+                if (state.GetRemainingActionPoints(skillUser) < stance.ActionPointCost) return;
+                var pos = state.GetPosition(skillUser);
+                var entries = _resolver.Resolve(skillUser, stance, pos, state);
+                _combatLog.AddEntries(entries);
+                EnterMovementMode();
+                break;
+
+            case 8: // First Aid (Skills[1]): enter targeting mode
+                if (skillUser.Skills.Count <= 1) return;
+                var firstAid = skillUser.Skills[1];
+                if (state.GetRemainingActionPoints(skillUser) < firstAid.ActionPointCost) return;
+                EnterAttackMode(firstAid);
+                break;
         }
     }
 
@@ -125,10 +208,19 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         if (mouse.LeftButton != ButtonState.Pressed || _prevMouse.LeftButton != ButtonState.Released)
             return;
 
-        int gridX = mouse.X / TileSize;
+        if (_inspectClickConsumed) return; // HandleInspectWindow already handled this click
+
+        int? clickedSlot = HotbarSlotAt(mouse.X, mouse.Y);
+        if (clickedSlot != null && _selected != null && (_mode == Mode.Movement || _mode == Mode.Attack))
+        {
+            ActivateSlot(clickedSlot.Value);
+            return;
+        }
+
+        int gridX = (mouse.X - ContentX) / TileSize;
         int gridY = mouse.Y / TileSize;
 
-        if (gridX < 0 || gridX >= state.Map.Width || gridY < 0 || gridY >= state.Map.Height)
+        if (mouse.X < ContentX || gridX >= state.Map.Width || gridY < 0 || gridY >= state.Map.Height)
         {
             ResetToIdle();
             return;
@@ -172,11 +264,13 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
                             state.SpendActionPoints(_selected!, _activeAttack.ActionPointCost);
                             int heal = Random.Shared.Next(-_activeAttack.MaxDamage, -_activeAttack.MinDamage + 1);
                             target.CurrentHp += heal;
+                            _combatLog.AddEntries(new[] { new CombatLogEntry(_selected!.Name, _activeAttack.Name, target.Name, WasHit: true, Damage: -heal, EffectsApplied: Array.Empty<string>()) });
                         }
                     }
                     else
                     {
-                        _resolver.Resolve(_selected!, _activeAttack!, (gridX, gridY), state);
+                        var entries = _resolver.Resolve(_selected!, _activeAttack!, (gridX, gridY), state);
+                        _combatLog.AddEntries(entries);
                     }
                     EnterMovementMode();
                 }
@@ -200,6 +294,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         _activeAttack = null;
         _reachable = new();
         _validTargets = new();
+        _rangeTiles = new();
     }
 
     private void EnterMovementMode()
@@ -208,6 +303,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         _mode = Mode.Movement;
         _activeAttack = null;
         _validTargets = new();
+        _rangeTiles = new();
         _reachable = MovementValidator.GetReachableTiles(_selected, state);
     }
 
@@ -217,22 +313,32 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         _mode = Mode.Attack;
         _activeAttack = attack;
         _reachable = new();
-        _validTargets = ComputeValidTargets(_selected, attack);
+        _rangeTiles = ComputeRangeTiles(_selected, attack);
+        _validTargets = ComputeValidTargets(_selected, attack, _rangeTiles);
     }
 
-    private HashSet<(int X, int Y)> ComputeValidTargets(Creature attacker, Attack attack)
+    private HashSet<(int X, int Y)> ComputeRangeTiles(Creature attacker, Attack attack)
+    {
+        var result = new HashSet<(int X, int Y)>();
+
+        for (int x = 0; x < state.Map.Width; x++)
+        for (int y = 0; y < state.Map.Height; y++)
+        {
+            if (_resolver.IsInRange(attacker, attack, (x, y), state))
+                result.Add((x, y));
+        }
+        return result;
+    }
+
+    private HashSet<(int X, int Y)> ComputeValidTargets(Creature attacker, Attack attack, HashSet<(int X, int Y)> rangeTiles)
     {
         var result = new HashSet<(int X, int Y)>();
         bool singleTarget = IsSingleTarget(attack);
 
-        // TODO(distance): switch from Chebyshev to Euclidean for circular range
-        // (paired with CombatResolver.IsInRange).
-        for (int x = 0; x < state.Map.Width; x++)
-        for (int y = 0; y < state.Map.Height; y++)
+        foreach (var tile in rangeTiles)
         {
-            if (!_resolver.IsInRange(attacker, attack, (x, y), state)) continue;
-            if (singleTarget && state.GetCreatureAt(x, y) == null) continue;
-            result.Add((x, y));
+            if (singleTarget && state.GetCreatureAt(tile.X, tile.Y) == null) continue;
+            result.Add(tile);
         }
         return result;
     }
@@ -241,6 +347,21 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
     {
         var offsets = attack.AttackShape.Offsets.ToList();
         return offsets.Count == 1 && offsets[0] == (0, 0);
+    }
+
+    private int? HotbarSlotAt(int mouseX, int mouseY)
+    {
+        int barX = HotbarBarX();
+        if (mouseY < HotbarBarY || mouseY >= HotbarBarY + HotbarBoxSize) return null;
+        if (mouseX < barX) return null;
+
+        int offset = mouseX - barX;
+        int stride = HotbarBoxSize + HotbarBoxGap;
+        int slot = offset / stride;
+        if (slot >= HotbarBoxCount) return null;
+        if (offset % stride >= HotbarBoxSize) return null; // clicked in the gap between boxes
+
+        return slot;
     }
 
     private bool JustPressed(KeyboardState kb, Keys k) =>
@@ -252,6 +373,9 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
 
     public void Draw(SpriteBatch sb)
     {
+        int mapWidth = state.Map.Width * TileSize;
+        _mapOffsetX = Math.Max(0, (sb.GraphicsDevice.Viewport.Width - mapWidth) / 2);
+
         DrawTerrain(sb);
         DrawMovementHighlights(sb);
         DrawAttackHighlights(sb);
@@ -260,6 +384,8 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         DrawHpBars(sb);
         DrawActionBar(sb);
         DrawApPips(sb);
+        _combatLog.Draw(sb, pixel, logFont, new Rectangle(LogPanelMargin, 0, LogPanelWidth, 900));
+        _inspectWindow.Draw(sb, pixel, logFont);
     }
 
     private void DrawTerrain(SpriteBatch sb)
@@ -273,7 +399,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
                 EncounterTileType.Hazard   => new Color(200, 100, 0),
                 _                          => new Color(90, 90, 90)
             };
-            sb.Draw(pixel, new Rectangle(x * TileSize, y * TileSize, TileSize, TileSize), color);
+            sb.Draw(pixel, new Rectangle(ContentX + x * TileSize, y * TileSize, TileSize, TileSize), color);
         }
     }
 
@@ -281,14 +407,23 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
     {
         if (_mode != Mode.Movement) return;
         foreach (var (pos, _) in _reachable)
-            sb.Draw(pixel, new Rectangle(pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), Color.Yellow * 0.35f);
+            sb.Draw(pixel, new Rectangle(ContentX + pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), Color.Yellow * 0.35f);
     }
 
     private void DrawAttackHighlights(SpriteBatch sb)
     {
         if (_mode != Mode.Attack) return;
-        foreach (var pos in _validTargets)
-            sb.Draw(pixel, new Rectangle(pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), Color.Red * 0.35f);
+        foreach (var pos in _rangeTiles)
+            sb.Draw(pixel, new Rectangle(ContentX + pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), Color.LightGray * 0.25f);
+
+        // AOE attacks (e.g. Shout): every in-range tile is already a valid target, so
+        // red would cover the whole range with no distinct "range" vs "target" meaning.
+        // Only single-target attacks get the extra red "a creature is actually here" cue.
+        if (_activeAttack != null && IsSingleTarget(_activeAttack))
+        {
+            foreach (var pos in _validTargets)
+                sb.Draw(pixel, new Rectangle(ContentX + pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), Color.Red * 0.35f);
+        }
     }
 
     private void DrawAoePreview(SpriteBatch sb)
@@ -301,7 +436,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
             int x = _hoverTile.X + dx;
             int y = _hoverTile.Y + dy;
             if (x < 0 || x >= state.Map.Width || y < 0 || y >= state.Map.Height) continue;
-            sb.Draw(pixel, new Rectangle(x * TileSize, y * TileSize, TileSize, TileSize), Color.Cyan * 0.5f);
+            sb.Draw(pixel, new Rectangle(ContentX + x * TileSize, y * TileSize, TileSize, TileSize), Color.Cyan * 0.5f);
         }
     }
 
@@ -310,14 +445,26 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         foreach (var merc in state.Mercenaries)
         {
             var pos = state.GetPosition(merc);
-            var color = merc == _selected ? Color.Cyan : Color.DodgerBlue;
-            sb.Draw(pixel, new Rectangle(pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), color);
+            var rect = new Rectangle(ContentX + pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize);
+            sb.Draw(pixel, rect, Color.DodgerBlue);
+            if (merc == _selected || merc == turns.CurrentCreature)
+                DrawSelectionRing(sb, rect);
         }
         foreach (var enemy in state.Enemies)
         {
             var pos = state.GetPosition(enemy);
-            sb.Draw(pixel, new Rectangle(pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), Color.Crimson);
+            sb.Draw(pixel, new Rectangle(ContentX + pos.X * TileSize, pos.Y * TileSize, TileSize, TileSize), Color.Crimson);
         }
+    }
+
+    private void DrawSelectionRing(SpriteBatch sb, Rectangle tileRect)
+    {
+        const int thickness = 2;
+        var ringColor = Color.Yellow;
+        sb.Draw(pixel, new Rectangle(tileRect.X - thickness, tileRect.Y - thickness, tileRect.Width + thickness * 2, thickness), ringColor);
+        sb.Draw(pixel, new Rectangle(tileRect.X - thickness, tileRect.Bottom, tileRect.Width + thickness * 2, thickness), ringColor);
+        sb.Draw(pixel, new Rectangle(tileRect.X - thickness, tileRect.Y - thickness, thickness, tileRect.Height + thickness * 2), ringColor);
+        sb.Draw(pixel, new Rectangle(tileRect.Right, tileRect.Y - thickness, thickness, tileRect.Height + thickness * 2), ringColor);
     }
 
     private void DrawHpBars(SpriteBatch sb)
@@ -329,7 +476,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
             float cur = Math.Max(0, c.CurrentHp);
             int fillW = max <= 0 ? 0 : (int)Math.Round(TileSize * (cur / max));
 
-            int barX = pos.X * TileSize;
+            int barX = ContentX + pos.X * TileSize;
             int barY = pos.Y * TileSize - 5;
             sb.Draw(pixel, new Rectangle(barX, barY, TileSize, 3), new Color(60, 0, 0));
             if (fillW > 0)
@@ -337,23 +484,33 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         }
     }
 
+    private int HotbarBarX()
+    {
+        int mapWidth = state.Map.Width * TileSize;
+        int hotbarWidth = HotbarBoxCount * HotbarBoxSize + (HotbarBoxCount - 1) * HotbarBoxGap;
+        return _mapOffsetX + Math.Max(0, (mapWidth - hotbarWidth) / 2);
+    }
+
     private void DrawActionBar(SpriteBatch sb)
     {
-        const int boxSize = 32;
-        const int boxGap = 2;
         const int borderSize = 2;
-        const int boxCount = 10;
-        int barX = 8;
-        int barY = 830;
+        int barX = HotbarBarX();
 
-        for (int i = 0; i < boxCount; i++)
+        // Slots 0-6 -> keys 1-7; slot 7 -> key 8; slot 8 -> key 9; slot 9 -> key 0.
+        int[] slotKeyLabels = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 0 };
+
+        for (int i = 0; i < HotbarBoxCount; i++)
         {
-            int x = barX + i * (boxSize + boxGap);
-            var outerRect = new Rectangle(x, barY, boxSize, boxSize);
+            int x = barX + i * (HotbarBoxSize + HotbarBoxGap);
+            var outerRect = new Rectangle(x, HotbarBarY, HotbarBoxSize, HotbarBoxSize);
             sb.Draw(pixel, outerRect, Color.White * 0.3f);
 
-            var innerRect = new Rectangle(x + borderSize, barY + borderSize, boxSize - borderSize * 2, boxSize - borderSize * 2);
+            var innerRect = new Rectangle(x + borderSize, HotbarBarY + borderSize, HotbarBoxSize - borderSize * 2, HotbarBoxSize - borderSize * 2);
             sb.Draw(pixel, innerRect, Color.Black);
+
+            string label = slotKeyLabels[i].ToString();
+            var labelPos = new Vector2(x + HotbarBoxSize - borderSize - 8, HotbarBarY + HotbarBoxSize - borderSize - 12);
+            sb.DrawString(logFont, label, labelPos, Color.White);
         }
 
         if (_selected is Mercenary merc)
@@ -361,19 +518,19 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
             // Attacks in slots 0..N-1
             for (int i = 0; i < Math.Min(7, merc.Attacks.Count); i++)
             {
-                int x = barX + i * (boxSize + boxGap);
-                var rect = new Rectangle(x + borderSize, barY + borderSize, boxSize - borderSize * 2, boxSize - borderSize * 2);
+                int x = barX + i * (HotbarBoxSize + HotbarBoxGap);
+                var rect = new Rectangle(x + borderSize, HotbarBarY + borderSize, HotbarBoxSize - borderSize * 2, HotbarBoxSize - borderSize * 2);
                 if (_skillIcons.TryGetValue(merc.Attacks[i].Name, out var icon))
                     sb.Draw(icon, rect, Color.White);
             }
 
-            // Skills in fixed slots 7 (Rush/key 8), 8 (Defensive Stance/key 0), 9 (First Aid/key 9)
-            int[] skillSlots = { 7, 8, 9 };
+            // Skills in fixed slots 7 (Defensive Stance/key 8), 8 (First Aid/key 9)
+            int[] skillSlots = { 7, 8 };
             for (int i = 0; i < Math.Min(skillSlots.Length, merc.Skills.Count); i++)
             {
                 int slot = skillSlots[i];
-                int x = barX + slot * (boxSize + boxGap);
-                var rect = new Rectangle(x + borderSize, barY + borderSize, boxSize - borderSize * 2, boxSize - borderSize * 2);
+                int x = barX + slot * (HotbarBoxSize + HotbarBoxGap);
+                var rect = new Rectangle(x + borderSize, HotbarBarY + borderSize, HotbarBoxSize - borderSize * 2, HotbarBoxSize - borderSize * 2);
                 if (_skillIcons.TryGetValue(merc.Skills[i].Name, out var icon))
                     sb.Draw(icon, rect, Color.White);
             }
@@ -387,7 +544,7 @@ public class EncounterScene(EncounterState state, TurnManager turns, Texture2D p
         int remaining = state.GetRemainingActionPoints(_selected);
         const int pipSize = 8;
         const int pipGap = 4;
-        int x0 = 8;
+        int x0 = HotbarBarX();
         int y0 = 810;
         for (int i = 0; i < max; i++)
         {
